@@ -33,6 +33,14 @@ The production `dist/` folder can be served by any static web host. Relative ass
 - Rounds last up to **3 minutes**. With **45 seconds left**, warning tiles turn into steel blocks in an inward spiral. Last survivor wins; simultaneous deaths or a timeout with both alive is a draw.
 - The first player to win **3 rounds** wins the match. Equipment and the arena reset each round.
 
+## Sound and effects
+
+Sound is on by default, after your first click or key press. The speaker button mutes all audio; the music-note button independently toggles the quiet original arcade soundtrack. Both preferences are saved. Music fades out during a computer-game pause, after the round ends, and while the tab is hidden.
+
+Bombs have animated fuses and accelerating crackles, followed by a layered bass thump, crack, and rumble. Blasts add connected fire trails, sparks, smoke, rings, fragments cut from the original crate artwork, and brief comic captions. Correct answers and upgrades get their own bursts and jingles. Knockouts play before the result screen appears. All effects are cosmetic: blast reach, collision, fuse timing, and question rewards are unchanged.
+
+The effects respect the browser's reduced-motion preference. Particle counts and audio layers are bounded, and a compressor controls overlapping sound levels. Everything is synthesized locally with Web Audio; no sound downloads or music service are needed.
+
 ## Two computers
 
 One player chooses **Create room** and shares the four-character code. The other chooses **Join a friend** and enters it. The host starts the match. Both computers must open this game, either from the same deployed URL or from the development server's printed LAN address.
@@ -52,7 +60,9 @@ Professor Byte walks to its own brains, spends time answering, and earns the sam
 - `src/game/engine.ts` — authoritative grid simulation, bombs, power-ups, private brains, and filtered snapshots.
 - `src/game/bot.ts` — computer pathfinding and bomb escape planning.
 - `src/game/questions.ts` — the shared maths library adapter.
-- `src/game/renderer.ts` — canvas drawing, sprite animation, and explosion effects.
+- `src/game/renderer.ts` / `src/game/effects.ts` — canvas drawing, sprite animation, and cosmetic explosion effects.
+- `src/game/feedback.ts` — one-time presentation cues from authoritative snapshots.
+- `src/ui/audio.ts` — original synthesized effects and the arcade music loop.
 - `src/network/session.ts` — room creation/joining, PeerJS transport, validation, and disconnect handling.
 - `src/main.ts` / `src/style.css` — menus, keyboard/touch input, HUD, questions, and viewport fitting.
 - `public/sprites/` — optimized original generated artwork.

@@ -15,6 +15,7 @@ import {
   type Direction,
   type Feedback,
   type Flame,
+  type Explosion,
   type Pickup,
   type Player,
   type PlayerId,
@@ -42,6 +43,7 @@ export class Engine {
   players: Player[];
   bombs: Bomb[] = [];
   flames: Flame[] = [];
+  explosions: Explosion[] = [];
   pickups: Pickup[] = [];
   brains: Brain[] = [];
   closing: (Point & { at: number }) | null = null;
@@ -281,6 +283,7 @@ export class Engine {
         }
       }
     }
+    this.explosions = this.explosions.filter((e) => this.time - e.at < 1.5);
     this.explodeDueBombs();
     this.updateStorm();
     this.checkDeaths();
@@ -306,7 +309,20 @@ export class Engine {
       const bomb = queue.shift()!;
       if (detonated.has(bomb.id)) continue;
       detonated.add(bomb.id);
-      for (const cell of this.blastCells(bomb)) {
+      const cells = this.blastCells(bomb);
+      this.explosions.push({
+        id: bomb.id,
+        x: bomb.x,
+        y: bomb.y,
+        owner: bomb.owner,
+        at: this.time,
+        chain: bomb.explodesAt > this.time,
+        cells,
+        crates: cells.filter(
+          (cell) => this.map[cell.y][cell.x] === 2 && !crates.has(key(cell)),
+        ),
+      });
+      for (const cell of cells) {
         this.flames.push({
           ...cell,
           expiresAt: this.time + FLAME_SECONDS,
@@ -408,6 +424,11 @@ export class Engine {
       players: this.players.map((p) => ({ ...p })),
       bombs: this.bombs.map(({ pass, ...b }) => ({ ...b, pass: [...pass] })),
       flames: this.flames.map((f) => ({ ...f })),
+      explosions: this.explosions.map((e) => ({
+        ...e,
+        cells: e.cells.map((c) => ({ ...c })),
+        crates: e.crates.map((c) => ({ ...c })),
+      })),
       pickups: this.pickups.map((p) => ({ ...p })),
       brains: this.brains
         .filter((b) => b.owner === id)

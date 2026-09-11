@@ -56,6 +56,15 @@ export type Feedback = {
   kind: "good" | "bad" | "info";
   at: number;
 };
+/** Public, short-lived presentation events, retained across snapshot gaps. */
+export type Explosion = Point & {
+  id: number;
+  owner: PlayerId;
+  at: number;
+  chain: boolean;
+  cells: Point[];
+  crates: Point[];
+};
 export type View = {
   tick: number;
   time: number;
@@ -66,6 +75,7 @@ export type View = {
   players: Player[];
   bombs: Bomb[];
   flames: Flame[];
+  explosions: Explosion[];
   pickups: Pickup[];
   brains: VisibleBrain[];
   activeBrain: number | null;

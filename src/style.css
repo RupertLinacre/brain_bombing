@@ -1801,3 +1801,14 @@ kbd {
   top: 0;
   transform-origin: top left;
 }
+
+.icon-button.audio-off {
+  color: #68847f;
+  opacity: 0.6;
+}
+.icon-button[aria-pressed="true"] {
+  color: #b8d8cb;
+}
+.icon-button.audio-off:hover {
+  opacity: 1;
+}

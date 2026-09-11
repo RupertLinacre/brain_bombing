@@ -2,21 +2,17 @@ import {
   COLS,
   ROWS,
   FUSE_SECONDS,
+  FLAME_SECONDS,
   key,
   type PlayerId,
   type View,
 } from "./types";
 
+import { ArenaEffects } from "./effects";
+import type { FrameFeedback } from "./feedback";
+
 const TILE = 60;
 const COLORS = ["#51e3d2", "#ff877b"];
-type Particle = {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  life: number;
-  color: string;
-};
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private images = new Map<string, HTMLImageElement>();
@@ -24,8 +20,8 @@ export class Renderer {
     { x: TILE * 1.5, y: TILE * 1.5 },
     { x: TILE * 13.5, y: TILE * 9.5 },
   ];
-  private particles: Particle[] = [];
-  private oldFlames = new Set<string>();
+  private effects = new ArenaEffects();
+  private endedAge = 0;
   private lastTime = 0;
   private lastFrame = 0;
   ready: Promise<void>;
@@ -62,8 +58,12 @@ export class Renderer {
 
   reset(): void {
     this.lastTime = 0;
-    this.oldFlames.clear();
-    this.particles = [];
+    this.effects.reset();
+    this.endedAge = 0;
+  }
+
+  react(events: FrameFeedback, view: View, local: PlayerId): void {
+    this.effects.react(events, view, local);
   }
 
   draw(view: View, local: PlayerId, now: number, preview = false): void {
@@ -72,10 +72,16 @@ export class Renderer {
     this.lastFrame = now;
     if (view.time < this.lastTime) this.reset();
     this.lastTime = view.time;
+    this.effects.update(dt);
+    this.endedAge = view.phase === "ended" ? this.endedAge + dt : 0;
+    const renderTime = view.time + this.endedAge;
     const pulse = now / 1000;
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     ctx.fillStyle = "#12272e";
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.save();
+    const shake = this.effects.shakeOffset(now);
+    ctx.translate(shake.x, shake.y);
     for (let y = 0; y < ROWS; y++)
       for (let x = 0; x < COLS; x++) {
         const px = x * TILE,
@@ -112,6 +118,7 @@ export class Renderer {
         } else if (view.map[y][x] === 2)
           this.sprite("crate", px + TILE / 2, py + TILE / 2 - 2, TILE + 5);
       }
+    this.effects.drawFloor(ctx);
     // Coloured spawn pads also keep player colours distinguishable without text.
     for (const [id, x, y] of [
       [0, 1, 1],
@@ -170,12 +177,27 @@ export class Renderer {
       ctx.ellipse(x, y + 14, 20, 8, 0, 0, Math.PI * 2);
       ctx.stroke();
       const fuse = Math.max(0, (bomb.explodesAt - view.time) / FUSE_SECONDS);
-      this.sprite(
-        "bomb",
-        x,
-        y - 1,
-        53 + Math.sin(pulse * (fuse < 0.3 ? 24 : 9)) * (1 - fuse) * 5,
-      );
+      const squish = this.effects.motion.matches
+        ? 0
+        : Math.sin(pulse * (fuse < 0.3 ? 27 : 10)) * (1 - fuse) * 0.085;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(1 + squish, 1 - squish);
+      this.sprite("bomb", 0, -1, 53 + (1 - fuse) * 3);
+      ctx.restore();
+      if (!this.effects.motion.matches)
+        for (let i = 0; i < 5; i++) {
+          const age = (pulse * 3 + i / 5 + bomb.id * 0.13) % 1;
+          ctx.globalAlpha = 1 - age;
+          ctx.fillStyle = i % 2 ? "#fff3ad" : "#ffa350";
+          ctx.fillRect(
+            x + 12 + Math.cos(i * 2.4) * age * 16,
+            y - 20 - age * 23,
+            2.5,
+            2.5,
+          );
+        }
+      ctx.globalAlpha = 1;
       ctx.strokeStyle = fuse < 0.3 ? "#ff7874" : "#ffce68";
       ctx.lineWidth = 3;
       ctx.beginPath();
@@ -191,41 +213,64 @@ export class Renderer {
       ctx.lineWidth = 3;
       ctx.strokeRect(x + 3, y + 3, TILE - 6, TILE - 6);
     }
-    const newFlames = new Set<string>();
-    for (const flame of view.flames) {
+    const liveFlames = view.flames.filter((f) => f.expiresAt > renderTime);
+    const flameCells = new Set(liveFlames.map(key));
+    const drawn = new Set<string>();
+    for (const flame of liveFlames) {
+      if (drawn.has(key(flame))) continue;
+      drawn.add(key(flame));
       const x = flame.x * TILE,
         y = flame.y * TILE;
-      newFlames.add(key(flame));
-      if (!this.oldFlames.has(key(flame)))
-        for (let i = 0; i < 5; i++)
-          this.particles.push({
-            x: x + TILE / 2,
-            y: y + TILE / 2,
-            vx: (Math.random() - 0.5) * 170,
-            vy: (Math.random() - 0.5) * 170,
-            life: 0.3 + Math.random() * 0.4,
-            color: i % 2 ? "#fff5a0" : "#ffab48",
-          });
-      const gradient = ctx.createRadialGradient(
+      const life = Math.min(1, (flame.expiresAt - renderTime) / FLAME_SECONDS);
+      const horizontal =
+        flameCells.has(`${flame.x - 1},${flame.y}`) ||
+        flameCells.has(`${flame.x + 1},${flame.y}`);
+      const vertical =
+        flameCells.has(`${flame.x},${flame.y - 1}`) ||
+        flameCells.has(`${flame.x},${flame.y + 1}`);
+      ctx.save();
+      // Keep hot flame geometry within the lethal cell, even beside steel walls.
+      ctx.beginPath();
+      ctx.rect(x, y, TILE, TILE);
+      ctx.clip();
+      const flicker = this.effects.motion.matches
+        ? 1
+        : 1 + Math.sin(pulse * 32 + flame.x * 2 + flame.y) * 0.1;
+      ctx.globalAlpha = Math.min(1, life * 4);
+      const glow = ctx.createRadialGradient(
         x + 30,
         y + 30,
-        2,
+        1,
         x + 30,
         y + 30,
-        43,
+        42,
       );
-      gradient.addColorStop(0, "#fff7b4");
-      gradient.addColorStop(0.38, "#ffca53");
-      gradient.addColorStop(1, "#fa693a00");
-      ctx.fillStyle = gradient;
-      ctx.fillRect(x - 8, y - 8, TILE + 16, TILE + 16);
-      ctx.fillStyle = "#fff4ad";
-      this.round(x + 19, y + 8, 22, TILE - 16, 8);
-      ctx.fill();
-      this.round(x + 8, y + 19, TILE - 16, 22, 8);
-      ctx.fill();
+      glow.addColorStop(0, "#fff0a1");
+      glow.addColorStop(0.48, "#ffb038");
+      glow.addColorStop(1, "#ed503600");
+      ctx.fillStyle = glow;
+      ctx.fillRect(x, y, TILE, TILE);
+      for (const [width, color] of [
+        [39, "#ff773a"],
+        [28, "#ffc85b"],
+        [13, "#fff3ba"],
+      ] as const) {
+        const w = width * flicker * (0.7 + life * 0.3);
+        ctx.fillStyle = color;
+        if (horizontal) {
+          this.round(x - 3, y + 30 - w / 2, TILE + 6, w, w / 2);
+          ctx.fill();
+        }
+        if (vertical) {
+          this.round(x + 30 - w / 2, y - 3, w, TILE + 6, w / 2);
+          ctx.fill();
+        }
+        ctx.beginPath();
+        ctx.arc(x + 30, y + 30, w / 1.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
     }
-    this.oldFlames = newFlames;
     for (const p of view.players) {
       const pos = this.positions[p.id],
         x = (p.x + 0.5) * TILE,
@@ -251,13 +296,27 @@ export class Renderer {
       const bounce = moving
         ? Math.sin(pulse * 24) * 3
         : Math.sin(pulse * 2 + p.id) * 0.7;
+      const age = this.effects.deathAge(p.id);
+      const knockedOut = !p.alive && age < 0.7;
+      ctx.save();
+      const hop = p.alive ? this.effects.hop(p.id) : 0;
+      const lift =
+        knockedOut && !this.effects.motion.matches
+          ? Math.sin((age / 0.7) * Math.PI) * 55
+          : 0;
+      ctx.translate(pos.x, pos.y - 10 + bounce - hop - lift);
+      if (knockedOut) {
+        ctx.globalAlpha = 1 - age / 0.8;
+        if (!this.effects.motion.matches) ctx.rotate(age * 8);
+      }
       this.sprite(
         p.id ? "player-coral" : "player-teal",
-        pos.x,
-        pos.y - 10 + bounce,
+        0,
+        0,
         69,
         p.facing === "left",
       );
+      ctx.restore();
       ctx.globalAlpha = 1;
       if (p.id === local && !preview && p.alive) {
         ctx.fillStyle = COLORS[p.id];
@@ -274,17 +333,8 @@ export class Renderer {
         y = brain.y * TILE - 1;
       this.questionLabel(brain.short, x, y);
     }
-    for (const p of this.particles) {
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      p.vy += 180 * dt;
-      p.life -= dt;
-      ctx.globalAlpha = Math.max(0, Math.min(1, p.life * 3));
-      ctx.fillStyle = p.color;
-      ctx.fillRect(p.x, p.y, 4, 4);
-    }
-    this.particles = this.particles.filter((p) => p.life > 0);
-    ctx.globalAlpha = 1;
+    this.effects.draw(ctx, this.images.get("crate"));
+    ctx.restore();
   }
 
   private questionLabel(text: string, x: number, y: number): void {

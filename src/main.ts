@@ -3,6 +3,7 @@ import { Engine } from "./game/engine";
 import { Bot } from "./game/bot";
 import { Renderer } from "./game/renderer";
 import { GameAudio } from "./ui/audio";
+import { FeedbackTracker } from "./game/feedback";
 import { Session, type NetworkEvent } from "./network/session";
 import {
   YEARS,
@@ -29,6 +30,8 @@ const escapeHtml = (s: string) =>
 const icons: Record<string, string> = {
   sound:
     '<path d="M11 5 6 9H3v6h3l5 4V5Zm4 3a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>',
+  music:
+    '<path d="M9 18V5l11-2v13M9 8l11-2"/><ellipse cx="6" cy="18" rx="3" ry="2"/><ellipse cx="17" cy="16" rx="3" ry="2"/>',
   muted: '<path d="M11 5 6 9H3v6h3l5 4V5Zm5 4 5 6m0-6-5 6"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 4.2 1.8c-1.5.9-1.7 1.2-1.7 2.7m0 3h.01"/>',
   fullscreen: '<path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/>',
@@ -46,6 +49,7 @@ $("#app").innerHTML = `
     <div class="topbar-middle"><span class="mode-dot"></span><span id="mode-label">THE THINK-FAST ARENA</span></div>
     <nav class="toolbar" aria-label="Game controls">
       <button class="icon-button" id="sound" aria-label="Turn sound on" title="Turn sound on">${icon("muted")}</button>
+      <button class="icon-button" id="music" aria-label="Mute music" title="Mute music">${icon("music")}</button>
       <button class="icon-button" id="help" aria-label="How to play" title="How to play">${icon("help")}</button>
       <button class="icon-button" id="fullscreen" aria-label="Full screen" title="Full screen">${icon("fullscreen")}</button>
       <button class="icon-button" id="pause" aria-label="Pause or leave game" title="Pause or leave game" hidden>${icon("pause")}</button>
@@ -81,8 +85,7 @@ let round = 1;
 let wins = [0, 0];
 let countedEnd = false;
 let awaitingRematch = false;
-let lastFeedback = "";
-let lastBombCount = 0;
+let resultTimer: ReturnType<typeof setTimeout> | undefined;
 let lastActive: number | null = null;
 let currentPanel = "";
 let modalKind = "";
@@ -92,6 +95,7 @@ let held: Direction[] = [];
 let lastSent = 0;
 let lastDirection: Direction | null = null;
 const audio = new GameAudio();
+const feedbackTracker = new FeedbackTracker();
 const renderer = new Renderer($("#arena"));
 const session = new Session(onNetwork);
 
@@ -116,7 +120,8 @@ let profile: Profile = {
     : "year3",
 };
 let botPace = loadPreference("bot", "chill") === "clever" ? "clever" : "chill";
-audio.muted = loadPreference("muted", "true") === "true";
+audio.muted = loadPreference("muted", "false") === "true";
+audio.musicEnabled = loadPreference("music", "true") === "true";
 updateSound();
 const preview = new Engine(
   [
@@ -155,6 +160,9 @@ function readProfile(): void {
 }
 
 function showMenu(): void {
+  clearTimeout(resultTimer);
+  audio.setActive(false);
+  feedbackTracker.reset();
   session.close();
   mode = "menu";
   screen = "menu";
@@ -251,6 +259,7 @@ function startCpu(): void {
 }
 
 function startRound(): void {
+  clearTimeout(resultTimer);
   closeModal();
   held = [];
   lastDirection = null;
@@ -265,8 +274,7 @@ function startRound(): void {
   awaitingRematch = false;
   currentPanel = "";
   lastActive = null;
-  lastFeedback = "";
-  lastBombCount = 0;
+  feedbackTracker.reset(engine ? view : undefined);
   renderer.reset();
   $("#game-frame").classList.remove("in-menu");
   $("#pause").hidden = false;
@@ -279,6 +287,7 @@ function startRound(): void {
   $("#arena-status").textContent =
     mode === "online" ? "CONNECTED" : "LOCAL MATCH";
   audio.unlock();
+  audio.play("start");
   $("#arena").focus();
   renderHud();
   renderSide();
@@ -337,6 +346,8 @@ function onNetwork(event: NetworkEvent): void {
   }
   if (event.kind === "lost") {
     lost = true;
+    clearTimeout(resultTimer);
+    audio.setActive(false);
     held = [];
     $("#arena-status").textContent = "DISCONNECTED";
     engine?.act(0, { type: "move", direction: null });
@@ -463,24 +474,53 @@ function afterView(): void {
     }
     lastActive = view.activeBrain;
   }
-  const stamp = `${view.feedback.at}:${view.feedback.text}`;
-  if (stamp !== lastFeedback) {
-    if (view.feedback.kind === "good" || view.feedback.kind === "bad")
-      audio.play(view.feedback.kind);
-    lastFeedback = stamp;
-  }
-  if (view.bombs.length < lastBombCount && view.flames.length)
-    audio.play("bomb");
-  lastBombCount = view.bombs.length;
+  const events = feedbackTracker.consume(view, local);
+  if (!document.hidden) renderer.react(events, view, local);
+  audio.react(events, view, local);
   renderHud();
   renderSide();
+  if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (events.solved || events.upgraded) {
+      document
+        .querySelector(local ? ".player-stat.coral" : ".player-stat.teal")
+        ?.animate(
+          [
+            { filter: "brightness(1)" },
+            { filter: "brightness(1.8)", transform: "scale(1.035)" },
+            { filter: "brightness(1)" },
+          ],
+          { duration: 420, easing: "ease-out" },
+        );
+    }
+    if (events.wrong)
+      document
+        .querySelector(".answer-options")
+        ?.animate(
+          [
+            { transform: "translateX(0)" },
+            { transform: "translateX(-4px)" },
+            { transform: "translateX(4px)" },
+            { transform: "translateX(0)" },
+          ],
+          { duration: 220 },
+        );
+  }
   if (view.phase === "ended" && !countedEnd) {
     countedEnd = true;
     held = [];
     if (view.winner !== "draw" && view.winner !== null) wins[view.winner]++;
-    audio.play("end");
+    audio.setActive(false);
+    audio.play(
+      view.winner === local
+        ? "win"
+        : view.winner === "draw"
+          ? "warning"
+          : "lose",
+    );
     renderHud();
-    showResult();
+    resultTimer = setTimeout(() => {
+      if (screen === "game" && view.phase === "ended" && !lost) showResult();
+    }, 900);
   }
 }
 
@@ -595,7 +635,15 @@ function updateSound(): void {
     "aria-label",
     audio.muted ? "Turn sound on" : "Mute sound",
   );
-  $("#sound").title = audio.muted ? "Turn sound on" : "Mute sound";
+  $("#sound").title = audio.muted ? "Turn sound on" : "Mute all audio";
+  $("#sound").setAttribute("aria-pressed", String(!audio.muted));
+  $("#music").setAttribute(
+    "aria-label",
+    audio.musicEnabled ? "Mute music" : "Turn music on",
+  );
+  $("#music").title = audio.musicEnabled ? "Mute music" : "Turn music on";
+  $("#music").setAttribute("aria-pressed", String(audio.musicEnabled));
+  $("#music").classList.toggle("audio-off", !audio.musicEnabled);
 }
 $("#sound").onclick = () => {
   audio.unlock();
@@ -604,6 +652,29 @@ $("#sound").onclick = () => {
   updateSound();
   if (!audio.muted) audio.play("good");
 };
+$("#music").onclick = () => {
+  audio.unlock();
+  audio.musicEnabled = !audio.musicEnabled;
+  savePreference("music", String(audio.musicEnabled));
+  updateSound();
+};
+// Unlock in the local gesture, including on a guest joining before the host starts.
+document.addEventListener("pointerdown", () => audio.unlock(), {
+  passive: true,
+});
+document.addEventListener("keydown", () => audio.unlock(), { passive: true });
+document.addEventListener("click", (e) => {
+  const button = (e.target as HTMLElement).closest("button");
+  if (
+    button &&
+    !button.hasAttribute("data-answer") &&
+    !button.hasAttribute("data-dir") &&
+    !button.classList.contains("drop-button") &&
+    button.id !== "touch-bomb"
+  )
+    audio.play("click");
+});
+window.addEventListener("pagehide", () => audio.setActive(false));
 $("#fullscreen").onclick = async () => {
   try {
     if (document.fullscreenElement) await document.exitFullscreen();
@@ -693,6 +764,7 @@ window.addEventListener("blur", () => {
 });
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
+    audio.setActive(false);
     held = [];
     act({ type: "move", direction: null });
     if (
@@ -754,6 +826,13 @@ setInterval(() => {
 }, 25);
 
 function frame(now: number): void {
+  audio.setActive(
+    screen === "game" &&
+      !paused &&
+      !lost &&
+      view.phase === "playing" &&
+      !document.hidden,
+  );
   if (screen === "game" && !paused && !lost && view.phase === "playing") {
     const direction = held.at(-1) ?? null;
     if (direction !== lastDirection || now - lastSent > 150) {
