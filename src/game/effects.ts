@@ -142,20 +142,26 @@ export class ArenaEffects {
       x = (p.x + 0.5) * TILE,
       y = (p.y + 0.5) * TILE;
     if (events.solved || events.upgraded) {
-      const color = events.solved
-        ? "#ffb9e7"
-        : events.upgraded === "fire"
-          ? "#ffd06a"
-          : "#81f5d7";
+      const milestone = events.solved && events.upgraded === "fire";
+      const color = milestone
+        ? "#ffd06a"
+        : events.solved
+          ? "#ffb9e7"
+          : events.upgraded === "fire"
+            ? "#ffd06a"
+            : "#81f5d7";
       this.word(
         x,
         y - 32,
-        events.solved
-          ? "+1 BOMB"
-          : events.upgraded === "fire"
-            ? "FLAME UP!"
-            : "SPEED UP!",
+        milestone
+          ? "BRAIN POWER!"
+          : events.solved
+            ? "+1 BOMB"
+            : events.upgraded === "fire"
+              ? "FLAME UP!"
+              : "SPEED UP!",
         color,
+        milestone,
       );
       this.rings.push({ x, y, life: 0.6, max: 0.6, radius: 55, color });
       for (let i = 0; i < 16; i++)

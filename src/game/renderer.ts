@@ -10,6 +10,8 @@ import {
 
 import { ArenaEffects } from "./effects";
 import type { FrameFeedback } from "./feedback";
+import { arenaInfo } from "./arenas";
+import { predictHazards, nextHazard, type HazardMap } from "./hazards";
 
 const TILE = 60;
 const COLORS = ["#51e3d2", "#ff877b"];
@@ -24,6 +26,8 @@ export class Renderer {
   private endedAge = 0;
   private lastTime = 0;
   private lastFrame = 0;
+  private hazardView?: View;
+  private hazards: HazardMap = new Map();
   ready: Promise<void>;
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -76,6 +80,11 @@ export class Renderer {
     this.endedAge = view.phase === "ended" ? this.endedAge + dt : 0;
     const renderTime = view.time + this.endedAge;
     const pulse = now / 1000;
+    const theme = arenaInfo(view.arena);
+    if (this.hazardView !== view) {
+      this.hazards = predictHazards(view);
+      this.hazardView = view;
+    }
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     ctx.fillStyle = "#12272e";
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -88,28 +97,43 @@ export class Renderer {
           py = y * TILE;
         const edge = x === 0 || y === 0 || x === COLS - 1 || y === ROWS - 1;
         ctx.fillStyle = edge
-          ? "#1c3038"
+          ? theme.edge
           : (x + y) % 2 === 0
-            ? "#284448"
-            : "#2c494c";
+            ? theme.floor[0]
+            : theme.floor[1];
         this.round(px + 1, py + 1, TILE - 2, TILE - 2, 5);
         ctx.fill();
         if (!edge) {
-          ctx.fillStyle = "#52706c40";
+          ctx.fillStyle = `${theme.accent}35`;
           ctx.fillRect(px + 7, py + 7, 2, 2);
+          if (view.arena === "ember" && (x === 7 || y === 5)) {
+            ctx.fillStyle = `${theme.accent}20`;
+            ctx.fillRect(px + 5, py + 5, TILE - 10, 2);
+            ctx.fillRect(px + 5, py + TILE - 7, TILE - 10, 2);
+          } else if (
+            view.arena === "arcade" &&
+            x >= 5 &&
+            x <= 9 &&
+            y >= 3 &&
+            y <= 7
+          ) {
+            ctx.strokeStyle = `${theme.accent}40`;
+            ctx.lineWidth = 1;
+            ctx.strokeRect(px + 5, py + 5, TILE - 10, TILE - 10);
+          }
           ctx.fillStyle = "#101f293b";
           ctx.fillRect(px + 2, py + TILE - 3, TILE - 4, 2);
         }
         if (view.map[y][x] === 1) {
           if (edge) {
-            ctx.fillStyle = "#30444c";
+            ctx.fillStyle = theme.wall;
             this.round(px + 5, py + 4, TILE - 10, TILE - 11, 6);
             ctx.fill();
-            ctx.fillStyle = "#3f5660";
+            ctx.fillStyle = `${theme.accent}50`;
             ctx.fillRect(px + 10, py + 8, TILE - 20, 2);
             ctx.fillStyle = "#152832";
             ctx.fillRect(px + 8, py + TILE - 9, TILE - 16, 3);
-            ctx.fillStyle = "#71908655";
+            ctx.fillStyle = `${theme.accent}70`;
             ctx.beginPath();
             ctx.arc(px + TILE / 2, py + TILE / 2, 2, 0, Math.PI * 2);
             ctx.fill();
@@ -119,6 +143,25 @@ export class Renderer {
           this.sprite("crate", px + TILE / 2, py + TILE / 2 - 2, TILE + 5);
       }
     this.effects.drawFloor(ctx);
+    // Short, readable floor warnings never alter blast timing or collision.
+    if (!preview && view.phase === "playing")
+      for (let y = 1; y < ROWS - 1; y++)
+        for (let x = 1; x < COLS - 1; x++) {
+          const hazard = nextHazard(this.hazards, { x, y }, view.time);
+          if (!hazard || hazard.kind !== "blast" || view.map[y][x] !== 0)
+            continue;
+          const left = hazard.at - view.time;
+          if (left <= 0 || left > 1.1) continue;
+          const urgent = left < 0.5;
+          ctx.fillStyle = urgent ? "#ff785438" : "#ffcd701b";
+          this.round(x * TILE + 4, y * TILE + 4, TILE - 8, TILE - 8, 5);
+          ctx.fill();
+          ctx.strokeStyle = urgent ? "#ffb18aac" : "#ffcb7080";
+          ctx.lineWidth = 2;
+          ctx.setLineDash([7, 5]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
     // Coloured spawn pads also keep player colours distinguishable without text.
     for (const [id, x, y] of [
       [0, 1, 1],
@@ -275,7 +318,11 @@ export class Renderer {
       const pos = this.positions[p.id],
         x = (p.x + 0.5) * TILE,
         y = (p.y + 0.5) * TILE;
-      if (Math.abs(pos.x - x) + Math.abs(pos.y - y) > TILE * 3 || preview) {
+      if (
+        Math.abs(pos.x - x) + Math.abs(pos.y - y) > TILE * 3 ||
+        preview ||
+        view.readyIn > 0
+      ) {
         pos.x = x;
         pos.y = y;
       }

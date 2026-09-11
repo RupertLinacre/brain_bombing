@@ -1,5 +1,7 @@
 import "./style.css";
 import { Engine } from "./game/engine";
+import { ARENAS, arenaInfo, makeArena, type ArenaId } from "./game/arenas";
+import { predictHazards, nextHazard } from "./game/hazards";
 import { Bot } from "./game/bot";
 import { Renderer } from "./game/renderer";
 import { GameAudio } from "./ui/audio";
@@ -7,6 +9,8 @@ import { FeedbackTracker } from "./game/feedback";
 import { Session, type NetworkEvent } from "./network/session";
 import {
   YEARS,
+  BRAINS_PER_UPGRADE,
+  MAX_RANGE,
   yearLabel,
   type Action,
   type Direction,
@@ -62,8 +66,8 @@ $("#app").innerHTML = `
   </section>
   <div class="play-layout">
     <section class="arena-section" aria-label="Game arena">
-      <div class="arena-heading"><span><b class="arena-light"></b> CIRCUIT GARDEN</span><span id="arena-status">15 × 11 ARENA</span></div>
-      <div class="canvas-wrap"><canvas id="arena" tabindex="0" aria-label="Brain Bombs arena. Move with arrow keys or W A S D. Walk into a brain to answer its question. Space places a bomb."></canvas><div class="arena-banner" id="arena-banner" hidden></div></div>
+      <div class="arena-heading"><span><b class="arena-light"></b> <span id="arena-name">CIRCUIT GARDEN</span></span><span id="arena-status">15 × 11 ARENA</span></div>
+      <div class="canvas-wrap"><canvas id="arena" tabindex="0" aria-label="Brain Bombs arena. Move with arrow keys or W A S D. Walk into a brain to answer its question. Space places a bomb."></canvas><div class="arena-banner" id="arena-banner" hidden></div><div class="danger-banner" id="danger-banner" role="status" hidden>Blast incoming — move now!</div></div>
       <div class="arena-bottom"><span><i class="private-dot"></i> Only you can see your brains</span><span id="arena-tip">A little maths. A lot of mayhem.</span></div>
       <div class="touch-controls" aria-label="Touch game controls"><div class="dpad"><button data-dir="up" aria-label="Move up">↑</button><button data-dir="left" aria-label="Move left">←</button><button data-dir="down" aria-label="Move down">↓</button><button data-dir="right" aria-label="Move right">→</button></div><button class="touch-bomb" id="touch-bomb"><img src="${asset("bomb")}" alt=""/> Drop bomb</button></div>
     </section>
@@ -94,6 +98,8 @@ let profiles: [Profile, Profile];
 let held: Direction[] = [];
 let lastSent = 0;
 let lastDirection: Direction | null = null;
+let lastCountdown = "";
+let awaitingView = false;
 const audio = new GameAudio();
 const feedbackTracker = new FeedbackTracker();
 const renderer = new Renderer($("#arena"));
@@ -120,15 +126,21 @@ let profile: Profile = {
     : "year3",
 };
 let botPace = loadPreference("bot", "chill") === "clever" ? "clever" : "chill";
+let selectedArena: ArenaId = arenaInfo(
+  loadPreference("arena", "garden") as ArenaId,
+).id;
+let rotateArenas = loadPreference("rotate", "true") === "true";
 audio.muted = loadPreference("muted", "false") === "true";
 audio.musicEnabled = loadPreference("music", "true") === "true";
 updateSound();
-const preview = new Engine(
+let preview = new Engine(
   [
     { name: profile.name, year: profile.year },
     { name: "Professor Byte", year: profile.year },
   ],
   8146,
+  undefined,
+  selectedArena,
 );
 // The menu shows the actual board renderer, without running a hidden match.
 preview.players[0].x = 3;
@@ -176,6 +188,7 @@ function showMenu(): void {
   round = 1;
   countedEnd = false;
   awaitingRematch = false;
+  awaitingView = false;
   currentPanel = "";
   closeModal();
   renderer.reset();
@@ -186,13 +199,39 @@ function showMenu(): void {
   $("#arena-status").textContent = "15 × 11 ARENA";
   $("#arena-tip").textContent = "A little maths. A lot of mayhem.";
   $("#arena-banner").hidden = true;
+  $("#danger-banner").hidden = true;
+  $(".canvas-wrap").classList.remove("in-danger");
   $("#side-panel").innerHTML = `
     <div class="menu-intro"><span class="eyebrow">TWO PLAYERS. ONE SURVIVOR.</span><h1>BRAIN<br/><span>BOMBS</span><b>2</b></h1><p>Solve maths. Earn bombs.<br/>Outsmart your opponent.</p></div>
     <div class="setup-fields"><label for="player-name">YOUR NAME</label><input id="player-name" maxlength="20" value="${escapeHtml(profile.name)}" autocomplete="nickname"/>
-    <div class="field-pair"><div><label for="year-level">YOUR MATHS LEVEL</label><select id="year-level">${YEARS.map((y) => `<option value="${y}" ${y === profile.year ? "selected" : ""}>${yearLabel(y)}</option>`).join("")}</select></div><div><label for="bot-level">COMPUTER</label><select id="bot-level"><option value="chill" ${botPace === "chill" ? "selected" : ""}>Chill</option><option value="clever" ${botPace === "clever" ? "selected" : ""}>Clever</option></select></div></div></div>
+    <div class="field-pair"><div><label for="year-level">YOUR MATHS LEVEL</label><select id="year-level">${YEARS.map((y) => `<option value="${y}" ${y === profile.year ? "selected" : ""}>${yearLabel(y)}</option>`).join("")}</select></div><div><label for="bot-level">COMPUTER</label><select id="bot-level"><option value="chill" ${botPace === "chill" ? "selected" : ""}>Chill</option><option value="clever" ${botPace === "clever" ? "selected" : ""}>Clever</option></select></div></div>
+    <div class="arena-choice"><label>YOUR FIRST ARENA</label><div class="arena-options" role="group" aria-label="Starting arena">${ARENAS.map((a) => `<button type="button" data-arena="${a.id}" aria-label="${a.name}: ${a.description}" aria-pressed="${a.id === selectedArena}" style="--arena-accent:${a.accent}">${arenaThumbnail(a.id)}<span>${a.name.split(" ").at(-1) === "Garden" ? "Garden" : a.id === "ember" ? "Ember" : "Neon"}</span></button>`).join("")}</div><label class="rotate-option"><input type="checkbox" id="rotate-arenas" ${rotateArenas ? "checked" : ""}/> New arena each round</label></div></div>
     <div class="mode-actions"><button class="primary" id="play-cpu">Play the computer ${icon("arrow")}</button><div class="friend-actions"><button class="secondary" id="create-room">Create room</button><button class="secondary" id="join-room">Join a friend</button></div></div>
     <p class="menu-note">Play a friend on another computer.<br/>Each player chooses their own maths level.</p>
     <div class="inline-status" id="menu-status" role="status"></div>`;
+  document
+    .querySelectorAll<HTMLButtonElement>("[data-arena]")
+    .forEach((button) => {
+      button.onclick = () => {
+        selectedArena = button.dataset.arena as ArenaId;
+        savePreference("arena", selectedArena);
+        document
+          .querySelectorAll("[data-arena]")
+          .forEach((b) =>
+            b.setAttribute(
+              "aria-pressed",
+              String((b as HTMLElement).dataset.arena === selectedArena),
+            ),
+          );
+        updatePreview();
+        audio.play("click");
+      };
+    });
+  $("#rotate-arenas").onchange = () => {
+    rotateArenas = $<HTMLInputElement>("#rotate-arenas").checked;
+    savePreference("rotate", String(rotateArenas));
+  };
+  updatePreview();
   $("#play-cpu").onclick = () => {
     readProfile();
     audio.unlock();
@@ -224,6 +263,42 @@ function showMenu(): void {
     $("#room-code").focus();
   };
   renderHud();
+}
+
+function arenaThumbnail(id: ArenaId): string {
+  const theme = arenaInfo(id);
+  const cells = makeArena(id, () => 0.45)
+    .flatMap((row, y) =>
+      row.map(
+        (tile, x) =>
+          `<rect x="${x * 3}" y="${y * 3}" width="2.5" height="2.5" rx=".4" fill="${tile === 1 ? theme.accent : tile === 2 ? "#c39571" : theme.floor[0]}"/>`,
+      ),
+    )
+    .join("");
+  return `<svg viewBox="0 0 45 33" aria-hidden="true">${cells}</svg>`;
+}
+
+function updatePreview(): void {
+  preview = new Engine(
+    [profile, { name: "Professor Byte", year: profile.year }],
+    8146,
+    undefined,
+    selectedArena,
+  );
+  Object.assign(preview.players[0], { x: 3, y: 3 });
+  Object.assign(preview.players[1], { x: 11, y: 7 });
+  view = preview.view(0);
+  renderer.reset();
+  renderArena();
+}
+
+function renderArena(): void {
+  const theme = arenaInfo(view.arena);
+  $("#arena-name").textContent = theme.name.toUpperCase();
+  $(".arena-light").style.background = theme.accent;
+  $(".canvas-wrap").style.setProperty("--arena-accent", theme.accent);
+  if (screen === "menu") $("#arena-status").textContent = theme.tag;
+  if (screen === "menu") $("#arena-tip").textContent = theme.description;
 }
 
 function showLobby(host: boolean): void {
@@ -264,9 +339,15 @@ function startRound(): void {
   held = [];
   lastDirection = null;
   lastSent = 0;
-  if (mode === "cpu" || session.role === "host") engine = new Engine(profiles);
+  if (mode === "cpu" || session.role === "host") {
+    const first = ARENAS.findIndex((arena) => arena.id === selectedArena);
+    const arena =
+      ARENAS[(first + (rotateArenas ? round - 1 : 0)) % ARENAS.length].id;
+    engine = new Engine(profiles, Date.now(), undefined, arena, 3);
+  }
   bot = mode === "cpu" ? new Bot(botPace as "chill" | "clever") : undefined;
   if (engine) view = engine.view(local);
+  awaitingView = !engine;
   screen = "game";
   paused = false;
   lost = false;
@@ -276,6 +357,7 @@ function startRound(): void {
   lastActive = null;
   feedbackTracker.reset(engine ? view : undefined);
   renderer.reset();
+  lastCountdown = "";
   $("#game-frame").classList.remove("in-menu");
   $("#pause").hidden = false;
   $("#arena-banner").hidden = true;
@@ -287,7 +369,6 @@ function startRound(): void {
   $("#arena-status").textContent =
     mode === "online" ? "CONNECTED" : "LOCAL MATCH";
   audio.unlock();
-  audio.play("start");
   $("#arena").focus();
   renderHud();
   renderSide();
@@ -334,6 +415,7 @@ function onNetwork(event: NetworkEvent): void {
   }
   if (event.kind === "view") {
     if (!lost && screen === "game") {
+      awaitingView = false;
       view = event.view;
       afterView();
     }
@@ -371,6 +453,8 @@ function act(action: Action): void {
 }
 
 function renderHud(): void {
+  renderArena();
+  renderCountdown();
   for (const p of view.players) {
     $(`#player${p.id}-name`).textContent =
       screen === "menu"
@@ -404,6 +488,33 @@ function renderHud(): void {
     screen === "game" && sec <= 45 ? "ARENA CLOSING IN" : "FIRST TO 3 WINS";
 }
 
+function renderCountdown(): void {
+  const banner = $("#arena-banner");
+  if (screen === "game" && awaitingView && !lost) {
+    banner.hidden = false;
+    banner.innerHTML =
+      '<div class="round-intro"><small>GET READY</small><p>Loading your friend’s arena…</p></div>';
+    return;
+  }
+  const visible =
+    screen === "game" &&
+    !lost &&
+    view.phase === "playing" &&
+    (view.readyIn > 0 || view.time < 0.6);
+  banner.hidden = !visible;
+  if (!visible) return;
+  const count = view.readyIn > 0 ? String(Math.ceil(view.readyIn)) : "GO!";
+  if (count === lastCountdown) return;
+  lastCountdown = count;
+  const theme = arenaInfo(view.arena);
+  banner.innerHTML = `<div class="round-intro"><span>ROUND ${String(round).padStart(2, "0")} · ${theme.name.toUpperCase()}</span><strong>${count}</strong><small class="${local ? "coral-text" : "teal-text"}">YOU ARE ${local ? "CORAL" : "TEAL"}</small><p>${count === "GO!" ? "THINK. DROP. DODGE." : "Find a brain. Earn your first bomb."}</p></div>`;
+  audio.play(count === "GO!" ? "start" : "click");
+}
+
+function powerProgress(): string {
+  return `<div class="brain-power"><div class="power-heading"><span>BRAIN POWER</span><strong id="power-label"></strong></div><div class="power-track" id="power-progress" role="progressbar" aria-label="Brains toward next flame upgrade" aria-valuemin="0" aria-valuemax="${BRAINS_PER_UPGRADE}">${Array.from({ length: BRAINS_PER_UPGRADE }, () => "<i></i>").join("")}</div><p id="power-note"></p></div>`;
+}
+
 function renderSide(): void {
   if (screen !== "game") return;
   const p = view.players[local],
@@ -419,8 +530,8 @@ function renderSide(): void {
         <div class="question-art"><img src="${asset("brain")}" alt="Pink brain"/></div><span class="question-level">${yearLabel(p.year)} · YOUR QUESTION</span>
         <h2 class="question-expression">${escapeHtml(brain.expression)}</h2><p class="question-instruction">Choose the correct answer</p>
         <div class="answer-options">${brain.choices.map((choice, i) => `<button class="answer ${brain.rejected.includes(i) ? "rejected" : ""}" data-answer="${i}" ${brain.rejected.includes(i) ? "disabled" : ""}><kbd>${i + 1}</kbd><span>${escapeHtml(choice)}</span>${brain.rejected.includes(i) ? "<i>×</i>" : ""}</button>`).join("")}</div>
-        <p class="live-note"><span></span> The arena is still live!</p><button class="text-button" id="dismiss-question">Move away or press <kbd>ESC</kbd></button>
-        <div class="feedback" id="feedback" role="status"></div>`;
+        <p class="live-note" id="question-live"><span></span> The arena is still live!</p><button class="text-button" id="dismiss-question">Move away or press <kbd>ESC</kbd></button>
+        ${powerProgress()}<div class="feedback" id="feedback" role="status"></div>`;
       document.querySelectorAll<HTMLButtonElement>("[data-answer]").forEach(
         (button) =>
           (button.onclick = () => {
@@ -443,7 +554,7 @@ function renderSide(): void {
         <button class="primary drop-button" id="drop-bomb">Drop a bomb <kbd>SPACE</kbd></button>
         <div class="loadout-stats"><div><img src="${asset("fire")}" alt=""/><span>Flame reach<strong id="flame-stat">${p.range} tiles</strong></span></div><div><img src="${asset("speed")}" alt=""/><span>Speed<strong id="speed-stat">${p.speed ? `+${p.speed}` : "Normal"}</strong></span></div></div>
         <div class="brain-prompt"><img src="${asset("brain")}" alt=""/><h2>Feed your firepower.</h2><p>Walk into a pink brain.<br/>Solve its question. Earn a bomb.</p><span class="solved-count" id="solved-count">${p.solved} brains solved</span></div>
-        <div class="feedback" id="feedback" role="status"></div>
+        ${powerProgress()}<div class="feedback" id="feedback" role="status"></div>
         <div class="pickup-tip"><img src="${asset("crate")}" alt=""/><span>Blast crates to find flame<br/>and speed power-ups.</span></div>`;
       $("#drop-bomb").onclick = () => {
         act({ type: "bomb" });
@@ -458,6 +569,40 @@ function renderSide(): void {
     $("#solved-count").textContent =
       `${p.solved} brain${p.solved === 1 ? "" : "s"} solved`;
     $("#drop-bomb").classList.toggle("empty", p.bombs === 0);
+  }
+  const maxed = p.range >= MAX_RANGE;
+  const progress = maxed ? BRAINS_PER_UPGRADE : p.solved % BRAINS_PER_UPGRADE;
+  $("#power-label").textContent = maxed
+    ? "MAX REACH"
+    : `${progress} / ${BRAINS_PER_UPGRADE}`;
+  $("#power-progress").setAttribute("aria-valuenow", String(progress));
+  const toGo = BRAINS_PER_UPGRADE - progress;
+  $("#power-progress").setAttribute(
+    "aria-valuetext",
+    maxed ? "Maximum flame reach" : `${toGo} more brains for a flame upgrade`,
+  );
+  $("#power-progress")
+    .querySelectorAll("i")
+    .forEach((pip, i) => pip.classList.toggle("filled", i < progress));
+  $("#power-note").textContent = maxed
+    ? "Keep solving. Every brain still earns a bomb."
+    : toGo === 1
+      ? "Next brain = bigger blasts!"
+      : `${toGo} more brains → +1 tile of flame reach`;
+  const danger = nextHazard(predictHazards(view), p, view.time);
+  const threatened = !!danger && p.alive && view.phase === "playing";
+  $("#danger-banner").hidden = !threatened;
+  $("#danger-banner").textContent =
+    danger?.kind === "wall"
+      ? "Closing tile — move now!"
+      : "Blast incoming — move now!";
+  $(".canvas-wrap").classList.toggle("in-danger", threatened);
+  const live = document.querySelector("#question-live");
+  if (live) {
+    live.textContent = threatened
+      ? "Move now! Your question will wait."
+      : "The arena is still live!";
+    live.classList.toggle("danger", threatened);
   }
   const feedback = $("#feedback");
   const text = view.time - view.feedback.at < 5 ? view.feedback.text : "";
@@ -596,6 +741,7 @@ function openPause(): void {
   held = [];
   act({ type: "move", direction: null });
   paused = mode === "cpu";
+  if (paused) audio.setActive(false);
   showModal(
     "pause",
     `<span class="eyebrow">${paused ? "TAKE A BREATHER" : "ONLINE MATCH"}</span><h2>${paused ? "Brain break." : "The battle is still live."}</h2><p>${paused ? "The arena is paused. Ready when you are." : "Online games keep running while this menu is open."}</p><button class="primary" id="resume">Back to battle ${icon("arrow")}</button><button class="text-button" id="leave-match">Leave match</button>`,
@@ -618,10 +764,13 @@ $("#help").onclick = () => {
   held = [];
   act({ type: "move", direction: null });
   const wasPaused = paused;
-  if (mode === "cpu" && screen === "game") paused = true;
+  if (mode === "cpu" && screen === "game") {
+    paused = true;
+    audio.setActive(false);
+  }
   showModal(
     "help",
-    `<span class="eyebrow">A QUICK FIELD GUIDE</span><h2>A good brain is your best weapon.</h2><div class="how-steps"><div><img src="${asset("brain")}" alt=""/><span><b>01 · Think</b>Walk into one of your pink brains. Click the answer or press 1–4. A correct answer earns one bomb. Wrong answers earn nothing; try again.</span></div><div><img src="${asset("bomb")}" alt=""/><span><b>02 · Drop</b>Use arrows or WASD to move. Press Space to place a bomb. Every bomb costs one from your arsenal and has a 2.6-second fuse.</span></div><div><img src="${asset("fire")}" alt=""/><span><b>03 · Dodge</b>Blasts travel in a cross. Steel blocks stop them; crates break and stop that blast. Bombs trigger one another, and your own blasts can get you.</span></div></div><p class="help-detail">Find flame pickups in crates for +1 tile of reach (up to 6), and shoes for more speed. Questions stay private; bomb counts and bombs are shared. The arena closes in with 45 seconds left. First to 3 round wins takes the match.</p><p class="help-live">While answering, the arena keeps running. Move away or press Escape to close a question.${mode === "online" && screen === "game" ? " Your online match is live now." : ""}</p><button class="primary" id="help-close">Got it. Let's play ${icon("arrow")}</button>`,
+    `<span class="eyebrow">A QUICK FIELD GUIDE</span><h2>A good brain is your best weapon.</h2><div class="how-steps"><div><img src="${asset("brain")}" alt=""/><span><b>01 · Think</b>Walk into one of your pink brains. Click the answer or press 1–4. A correct answer earns one bomb. Wrong answers earn nothing; try again.</span></div><div><img src="${asset("bomb")}" alt=""/><span><b>02 · Drop</b>Use arrows or WASD to move. Press Space to place a bomb. Every bomb costs one from your arsenal and has a 2.6-second fuse.</span></div><div><img src="${asset("fire")}" alt=""/><span><b>03 · Dodge</b>Blasts travel in a cross. Steel blocks stop them; crates break and stop that blast. Bombs trigger one another, and your own blasts can get you.</span></div></div><p class="help-detail">Every 3 solved brains earns +1 tile of flame reach, up to 6. Crates can also reveal flame pickups or shoes for more speed. Amber floor outlines warn where a bomb is about to explode. The host chooses the arenas in online matches. Questions stay private; bomb counts and bombs are shared. The arena closes in with 45 seconds left. First to 3 round wins takes the match.</p><p class="help-live">While answering, the arena keeps running. Move away or press Escape to close a question.${mode === "online" && screen === "game" ? " Your online match is live now." : ""}</p><button class="primary" id="help-close">Got it. Let's play ${icon("arrow")}</button>`,
   );
   $("#help-close").onclick = () => {
     paused = wasPaused;
@@ -830,7 +979,9 @@ function frame(now: number): void {
     screen === "game" &&
       !paused &&
       !lost &&
+      !awaitingView &&
       view.phase === "playing" &&
+      view.readyIn === 0 &&
       !document.hidden,
   );
   if (screen === "game" && !paused && !lost && view.phase === "playing") {

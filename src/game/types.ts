@@ -1,3 +1,5 @@
+import type { ArenaId } from "./arenas";
+
 export type PlayerId = 0 | 1;
 export type Direction = "up" | "down" | "left" | "right";
 export type YearLevel =
@@ -66,6 +68,8 @@ export type Explosion = Point & {
   crates: Point[];
 };
 export type View = {
+  arena: ArenaId;
+  readyIn: number;
   tick: number;
   time: number;
   remaining: number;
@@ -92,6 +96,8 @@ export const ROWS = 11;
 export const ROUND_SECONDS = 180;
 export const FUSE_SECONDS = 2.6;
 export const FLAME_SECONDS = 0.65;
+export const BRAINS_PER_UPGRADE = 3;
+export const MAX_RANGE = 6;
 export const DIRECTIONS: Record<Direction, Point> = {
   up: { x: 0, y: -1 },
   down: { x: 0, y: 1 },

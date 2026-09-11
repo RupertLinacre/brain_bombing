@@ -1,4 +1,6 @@
 import { makeQuestion } from "./questions";
+import { makeArena, type ArenaId } from "./arenas";
+import { blastCells } from "./hazards";
 import {
   COLS,
   ROWS,
@@ -6,6 +8,8 @@ import {
   FUSE_SECONDS,
   FLAME_SECONDS,
   ROUND_SECONDS,
+  BRAINS_PER_UPGRADE,
+  MAX_RANGE,
   distance,
   same,
   key,
@@ -35,6 +39,7 @@ type Control = {
 };
 type QuestionFactory = (year: YearLevel) => Question;
 export class Engine {
+  readyIn: number;
   time = 0;
   tick = 0;
   phase: "playing" | "ended" = "playing";
@@ -68,9 +73,12 @@ export class Engine {
     profiles: [Profile, Profile],
     seed = Date.now(),
     private questions: QuestionFactory = makeQuestion,
+    readonly arena: ArenaId = "garden",
+    introSeconds = 0,
   ) {
+    this.readyIn = Math.max(0, introSeconds);
     this.randomState = seed >>> 0 || 1;
-    this.map = this.makeMap();
+    this.map = makeArena(arena, () => this.random());
     this.players = profiles.map((p, id) => ({
       ...p,
       id: id as PlayerId,
@@ -102,29 +110,6 @@ export class Engine {
     return (this.randomState >>> 0) / 4294967296;
   }
 
-  private makeMap(): number[][] {
-    const map: number[][] = Array.from({ length: ROWS }, (_, y) =>
-      Array.from({ length: COLS }, (_, x) =>
-        x === 0 ||
-        y === 0 ||
-        x === COLS - 1 ||
-        y === ROWS - 1 ||
-        (x % 2 === 0 && y % 2 === 0)
-          ? 1
-          : 0,
-      ),
-    );
-    for (let y = 1; y < ROWS - 1; y++)
-      for (let x = 1; x < COLS - 1; x++) {
-        if (map[y][x] || x + y <= 6 || COLS - 1 - x + ROWS - 1 - y <= 6)
-          continue;
-        if (y * COLS + x > (ROWS - 1 - y) * COLS + COLS - 1 - x) continue;
-        if (this.random() < 0.53)
-          map[y][x] = map[ROWS - 1 - y][COLS - 1 - x] = 2;
-      }
-    return map;
-  }
-
   walkable(p: Point, id?: PlayerId, ignoreBombs = false): boolean {
     return (
       this.map[p.y]?.[p.x] === 0 &&
@@ -151,16 +136,7 @@ export class Engine {
 
   /** Walls stop fire; the first crate is hit but stops propagation. */
   blastCells(bomb: Pick<Bomb, "x" | "y" | "range">): Point[] {
-    const cells = [{ x: bomb.x, y: bomb.y }];
-    for (const d of Object.values(DIRECTIONS))
-      for (let n = 1; n <= bomb.range; n++) {
-        const p = { x: bomb.x + d.x * n, y: bomb.y + d.y * n };
-        const tile = this.map[p.y]?.[p.x];
-        if (tile === undefined || tile === 1) break;
-        cells.push(p);
-        if (tile === 2) break;
-      }
-    return cells;
+    return blastCells(this.map, bomb);
   }
 
   activeBrain(id: PlayerId): Brain | undefined {
@@ -175,7 +151,7 @@ export class Engine {
   act(id: PlayerId, action: Action): void {
     const p = this.players[id],
       c = this.controls[id];
-    if (this.phase !== "playing" || !p.alive) return;
+    if (this.phase !== "playing" || this.readyIn > 0 || !p.alive) return;
     if (action.type === "move") {
       // Remember a short tap even if keyup arrives before the next simulation tick.
       if (action.direction && c.direction !== action.direction)
@@ -219,8 +195,17 @@ export class Engine {
       if (b.question.correct === action.choice) {
         p.bombs++;
         p.solved++;
+        const upgraded =
+          p.solved % BRAINS_PER_UPGRADE === 0 && p.range < MAX_RANGE;
+        if (upgraded) p.range++;
         this.brains = this.brains.filter((brain) => brain.id !== b.id);
-        this.tell(id, "+1 bomb. Brilliant!", "good");
+        this.tell(
+          id,
+          upgraded
+            ? `Brain power! +1 bomb and ${p.range}-tile flames.`
+            : "+1 bomb. Brilliant!",
+          "good",
+        );
         this.refillBrains();
       } else {
         b.rejected.push(action.choice);
@@ -236,6 +221,12 @@ export class Engine {
 
   step(dt = 0.05): void {
     if (this.phase === "ended") return;
+    if (this.readyIn > 0) {
+      this.readyIn = Math.max(0, this.readyIn - dt);
+      if (this.readyIn < 0.001) this.readyIn = 0;
+      this.tick++;
+      return;
+    }
     this.time += dt;
     this.tick++;
     this.flames = this.flames.filter((f) => f.expiresAt > this.time);
@@ -264,7 +255,8 @@ export class Engine {
           if (!same(b, p)) b.pass = b.pass.filter((id) => id !== p.id);
         const pickup = this.pickups.find((item) => same(item, p));
         if (pickup) {
-          if (pickup.kind === "fire") p.range = Math.min(6, p.range + 1);
+          if (pickup.kind === "fire")
+            p.range = Math.min(MAX_RANGE, p.range + 1);
           else p.speed = Math.min(3, p.speed + 1);
           this.pickups = this.pickups.filter((item) => item !== pickup);
           this.tell(
@@ -415,6 +407,8 @@ export class Engine {
   /** Only this viewer's questions go onto the wire. Answers are never sent. */
   view(id: PlayerId): View {
     return {
+      arena: this.arena,
+      readyIn: this.readyIn,
       tick: this.tick,
       time: this.time,
       remaining: Math.max(0, ROUND_SECONDS - this.time),

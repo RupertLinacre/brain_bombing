@@ -11,7 +11,7 @@ export type NetworkEvent =
   | { kind: "rematch" }
   | { kind: "lost"; text: string };
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const PREFIX = "brain-bombs-2-v1-";
+const PREFIX = "brain-bombs-2-v2-";
 const validProfile = (p: unknown): p is Profile =>
   !!p &&
   typeof p === "object" &&

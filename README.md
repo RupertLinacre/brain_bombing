@@ -23,12 +23,16 @@ The production `dist/` folder can be served by any static web host. Relative ass
 
 ## How to play
 
+- Choose **Circuit Garden** (winding paths), **Ember Works** (open cross lanes), or **Neon Arcade** (a roomy central plaza). Enable **New arena each round** to rotate through all three. The host chooses for online matches.
+- A shared **3-second countdown** introduces the arena and your colour. The round clock and all actions wait until it ends.
 - Move with **WASD** or **arrow keys**. Touch controls are also available on narrow screens.
 - Each player starts with **zero bombs**. Walk into one of your pink brains and answer its question by clicking a choice or pressing **1–4**. A correct answer earns exactly **one consumable bomb**.
 - Questions use `maths-game-problem-generator` **1.1.0**, including its `expression_short`, four answer choices, and correct answer. Reception through Year 6 are supported. Each player chooses their own year.
 - Wrong answers earn nothing and briefly lock further attempts. Move away or press **Escape** to dismiss a question. **The arena keeps running while you answer.**
 - Press **Space** or the bomb button to place a bomb. Its fuse lasts **2.6 seconds**. You can step off a new bomb, but cannot walk back through it.
 - Blasts travel in a **cross**, stop at steel blocks, destroy the first crate in their path, and trigger other bombs. Your own explosions can eliminate you.
+- Every **3 solved brains** also earns **+1 tile of flame reach**, up to 6. The brain-power meter shows your progress, including while answering. Each correct answer still earns exactly one bomb; wrong answers do not advance progress.
+- Amber dashed tiles warn of a blast in its final **1.1 seconds**. A **move now** banner appears whenever your tile is threatened, including while answering. Warnings account for chain reactions and later blasts through already destroyed crates.
 - Crates sometimes reveal **flame** pickups (+1 tile of reach, from 2 to a maximum of 6) or **speed** pickups (up to 3 upgrades). Reach is captured when a bomb is placed.
 - Rounds last up to **3 minutes**. With **45 seconds left**, warning tiles turn into steel blocks in an inward spiral. Last survivor wins; simultaneous deaths or a timeout with both alive is a draw.
 - The first player to win **3 rounds** wins the match. Equipment and the arena reset each round.
@@ -53,11 +57,13 @@ PeerJS's public signalling service needs internet access. Some school, corporate
 
 ## Computer opponent
 
-Professor Byte walks to its own brains, spends time answering, and earns the same one bomb per correct answer. It looks for useful crate-clearing or attacking placements and checks for an escape route. Its danger map accounts for chain reactions and the closing arena. **Chill** takes longer to answer; **Clever** answers faster. Neither receives free ammunition or immunity.
+Professor Byte walks to its own brains, spends time answering, and earns the same one bomb per correct answer. It looks for useful crate-clearing or attacking placements and checks for an escape route. It scores reachable destinations for useful upgrades, efficient crate clearing, and attack lanes, and keeps a target to avoid unnecessary wandering. Escape planning accounts for movement timing, chain reactions, fire expiry, the closing arena, and crates destroyed by earlier bombs. **Chill** takes longer to answer and favours gentler attacks; **Clever** answers faster and prioritizes stronger attacking positions. Neither receives free ammunition or immunity.
 
 ## Project layout
 
 - `src/game/engine.ts` — authoritative grid simulation, bombs, power-ups, private brains, and filtered snapshots.
+- `src/game/arenas.ts` — three symmetric arena layouts and their visual themes.
+- `src/game/hazards.ts` — shared blast geometry and public hazard forecasting.
 - `src/game/bot.ts` — computer pathfinding and bomb escape planning.
 - `src/game/questions.ts` — the shared maths library adapter.
 - `src/game/renderer.ts` / `src/game/effects.ts` — canvas drawing, sprite animation, and cosmetic explosion effects.
@@ -67,6 +73,6 @@ Professor Byte walks to its own brains, spends time answering, and earns the sam
 - `src/main.ts` / `src/style.css` — menus, keyboard/touch input, HUD, questions, and viewport fitting.
 - `public/sprites/` — optimized original generated artwork.
 - `assets/source/` / `docs/ARTWORK.md` — source atlas and exact generation prompt.
-- `tests/game.test.ts` — focused automated rule and integration tests.
+- `tests/` — rule, privacy, feedback, arena, progression, and tactical scenario tests.
 
 The cloned `arithmetic_annihilation/` and `maths_vs_monsters/` folders are reference projects, ignored by this repository and excluded from test discovery. They are not runtime dependencies.
