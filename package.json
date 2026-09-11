@@ -1,0 +1,24 @@
+{
+  "name": "brain-bombs-2",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "assets": "node scripts/prepare-sprites.mjs"
+  },
+  "dependencies": {
+    "maths-game-problem-generator": "1.1.0",
+    "peerjs": "^1.5.5"
+  },
+  "devDependencies": {
+    "sharp": "^0.35.4",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.5",
+    "vitest": "^4.1.11"
+  }
+}

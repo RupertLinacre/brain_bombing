@@ -1,0 +1,12 @@
+/arithmetic_annihilation/
+/maths_vs_monsters/
+node_modules/
+dist/
+.DS_Store
+.env
+.env.*
+!.env.example
+output/
+.playwright-cli/
+.sites-runtime/
+*.log
