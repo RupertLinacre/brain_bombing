@@ -215,4 +215,38 @@ describe("fair starts and better tactics", () => {
     expect(g.bombs).toHaveLength(0);
     expect(g.players[1].bombs).toBe(1);
   });
+  it("Starter waits longer to solve and does not hunt the player with bombs", () => {
+    const g = make();
+    open(g);
+    Object.assign(g.players[1], { x: 7, y: 5 });
+    Object.assign(g.players[0], { x: 9, y: 5 });
+    g.brains = [
+      {
+        x: 7,
+        y: 5,
+        id: 900,
+        owner: 1,
+        question: question(),
+        rejected: [],
+        retryAt: 0,
+      },
+    ];
+    const bot = new Bot("starter");
+    for (let i = 0; i < 150; i++) {
+      bot.update(g);
+      g.step();
+    }
+    expect(g.players[1].solved).toBe(0);
+    for (let i = 0; i < 100; i++) {
+      bot.update(g);
+      g.step();
+    }
+    expect(g.players[1].solved).toBe(1);
+    const attackOnly = make();
+    open(attackOnly);
+    Object.assign(attackOnly.players[1], { x: 7, y: 5, bombs: 1 });
+    Object.assign(attackOnly.players[0], { x: 9, y: 5 });
+    new Bot("starter").update(attackOnly);
+    expect(attackOnly.bombs).toHaveLength(0);
+  });
 });

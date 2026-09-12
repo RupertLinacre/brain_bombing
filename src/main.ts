@@ -2,7 +2,7 @@ import "./style.css";
 import { Engine } from "./game/engine";
 import { ARENAS, arenaInfo, makeArena, type ArenaId } from "./game/arenas";
 import { predictHazards, nextHazard } from "./game/hazards";
-import { Bot } from "./game/bot";
+import { Bot, type BotPace } from "./game/bot";
 import { Renderer } from "./game/renderer";
 import { GameAudio } from "./ui/audio";
 import { FeedbackTracker } from "./game/feedback";
@@ -125,7 +125,10 @@ let profile: Profile = {
     ? (loadPreference("year", "year3") as Profile["year"])
     : "year3",
 };
-let botPace = loadPreference("bot", "chill") === "clever" ? "clever" : "chill";
+const savedBotPace = loadPreference("bot", "starter");
+let botPace: BotPace = ["starter", "chill", "clever"].includes(savedBotPace)
+  ? (savedBotPace as BotPace)
+  : "starter";
 let selectedArena: ArenaId = arenaInfo(
   loadPreference("arena", "garden") as ArenaId,
 ).id;
@@ -165,7 +168,7 @@ function readProfile(): void {
       : profile.name,
     year: $<HTMLSelectElement>("#year-level").value as Profile["year"],
   };
-  botPace = $<HTMLSelectElement>("#bot-level").value;
+  botPace = $<HTMLSelectElement>("#bot-level").value as BotPace;
   savePreference("name", profile.name);
   savePreference("year", profile.year);
   savePreference("bot", botPace);
@@ -204,7 +207,7 @@ function showMenu(): void {
   $("#side-panel").innerHTML = `
     <div class="menu-intro"><span class="eyebrow">TWO PLAYERS. ONE SURVIVOR.</span><h1>BRAIN<br/><span>BOMBS</span><b>2</b></h1><p>Solve maths. Earn bombs.<br/>Outsmart your opponent.</p></div>
     <div class="setup-fields"><label for="player-name">YOUR NAME</label><input id="player-name" maxlength="20" value="${escapeHtml(profile.name)}" autocomplete="nickname"/>
-    <div class="field-pair"><div><label for="year-level">YOUR MATHS LEVEL</label><select id="year-level">${YEARS.map((y) => `<option value="${y}" ${y === profile.year ? "selected" : ""}>${yearLabel(y)}</option>`).join("")}</select></div><div><label for="bot-level">COMPUTER</label><select id="bot-level"><option value="chill" ${botPace === "chill" ? "selected" : ""}>Chill</option><option value="clever" ${botPace === "clever" ? "selected" : ""}>Clever</option></select></div></div>
+    <div class="field-pair"><div><label for="year-level">YOUR MATHS LEVEL</label><select id="year-level">${YEARS.map((y) => `<option value="${y}" ${y === profile.year ? "selected" : ""}>${yearLabel(y)}</option>`).join("")}</select></div><div><label for="bot-level">COMPUTER</label><select id="bot-level"><option value="starter" ${botPace === "starter" ? "selected" : ""}>Starter (age 7)</option><option value="chill" ${botPace === "chill" ? "selected" : ""}>Chill</option><option value="clever" ${botPace === "clever" ? "selected" : ""}>Clever</option></select></div></div>
     <div class="arena-choice"><label>YOUR FIRST ARENA</label><div class="arena-options" role="group" aria-label="Starting arena">${ARENAS.map((a) => `<button type="button" data-arena="${a.id}" aria-label="${a.name}: ${a.description}" aria-pressed="${a.id === selectedArena}" style="--arena-accent:${a.accent}">${arenaThumbnail(a.id)}<span>${a.name.split(" ").at(-1) === "Garden" ? "Garden" : a.id === "ember" ? "Ember" : "Neon"}</span></button>`).join("")}</div><label class="rotate-option"><input type="checkbox" id="rotate-arenas" ${rotateArenas ? "checked" : ""}/> New arena each round</label></div></div>
     <div class="mode-actions"><button class="primary" id="play-cpu">Play the computer ${icon("arrow")}</button><div class="friend-actions"><button class="secondary" id="create-room">Create room</button><button class="secondary" id="join-room">Join a friend</button></div></div>
     <p class="menu-note">Play a friend on another computer.<br/>Each player chooses their own maths level.</p>
@@ -345,7 +348,7 @@ function startRound(): void {
       ARENAS[(first + (rotateArenas ? round - 1 : 0)) % ARENAS.length].id;
     engine = new Engine(profiles, Date.now(), undefined, arena, 3);
   }
-  bot = mode === "cpu" ? new Bot(botPace as "chill" | "clever") : undefined;
+  bot = mode === "cpu" ? new Bot(botPace) : undefined;
   if (engine) view = engine.view(local);
   awaitingView = !engine;
   screen = "game";

@@ -18,6 +18,7 @@ import {
 } from "./hazards";
 
 type Route = { cell: Point; path: Direction[] };
+export type BotPace = "starter" | "chill" | "clever";
 
 /** The bot has the same movement, questions, ammunition and hazards as a human. */
 export class Bot {
@@ -25,7 +26,7 @@ export class Bot {
   private solving: number | null = null;
   private answerAt = 0;
   private target = "";
-  constructor(private pace: "chill" | "clever" = "chill") {}
+  constructor(private pace: BotPace = "chill") {}
 
   update(game: Engine): void {
     if (
@@ -34,7 +35,7 @@ export class Bot {
       game.phase === "ended"
     )
       return;
-    this.nextThink = game.time + 0.1;
+    this.nextThink = game.time + (this.pace === "starter" ? 0.28 : 0.1);
     const p = game.players[1];
     if (!p.alive) return;
     const danger = predictHazards(game);
@@ -53,10 +54,12 @@ export class Bot {
       game.act(1, { type: "move", direction: null });
       if (this.solving !== brain.id) {
         this.solving = brain.id;
+        const answerTime =
+          this.pace === "clever" ? 2.8 : this.pace === "chill" ? 5.2 : 8.5;
         this.answerAt =
           game.time +
-          (this.pace === "clever" ? 2.8 : 5.2) +
-          game.random() * 1.8;
+          answerTime +
+          game.random() * (this.pace === "starter" ? 3 : 1.8);
       }
       if (game.time >= this.answerAt)
         game.act(1, {
@@ -78,7 +81,16 @@ export class Bot {
         let value = 0,
           kind = "";
         if (brain) {
-          value = p.bombs === 0 ? 40 : p.bombs === 1 ? 12 : 3;
+          value =
+            p.bombs === 0
+              ? 40
+              : this.pace === "starter"
+                ? p.bombs === 1
+                  ? 6
+                  : 1
+                : p.bombs === 1
+                  ? 12
+                  : 3;
           kind = "brain";
         }
         if (
@@ -96,8 +108,15 @@ export class Bot {
           ).length;
           const attack = blast.some((cell) => same(cell, game.players[0]));
           const placement =
-            crates * (this.pace === "clever" ? 4 : 3) +
-            (attack ? (this.pace === "clever" ? 23 : 13) : 0);
+            crates *
+              (this.pace === "clever" ? 4 : this.pace === "chill" ? 3 : 2) +
+            (attack
+              ? this.pace === "clever"
+                ? 23
+                : this.pace === "chill"
+                  ? 13
+                  : 0
+              : 0);
           if (placement > value) {
             value = placement;
             kind = "bomb";

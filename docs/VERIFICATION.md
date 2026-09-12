@@ -2,7 +2,7 @@
 
 Checked locally on 12 September 2026.
 
-- `npm test`: 48 passing tests. Includes 560 generated questions spanning all seven year levels, private per-player snapshots, answer validation/replay prevention, bomb consumption and blocking, cross-shaped blast geometry, chain reactions, three-life rounds, simultaneous knockout recovery, instant-only damage, narrow-lane collision, live questions, pickups, unlimited round time, computer behaviour, and short keyboard taps.
+- `npm test`: 49 passing tests. Includes 560 generated questions spanning all seven year levels, private per-player snapshots, answer validation/replay prevention, bomb consumption and blocking, cross-shaped blast geometry, chain reactions, three-life rounds, simultaneous knockout recovery, instant-only damage, narrow-lane collision, live questions, pickups, unlimited round time, all three computer difficulty levels, and short keyboard taps.
 - `npm run build`: TypeScript checks and Vite production build pass.
 - `npm audit`: no known vulnerabilities in the installed dependency tree.
 - Browser checks: start screen, computer game, four-choice question presentation, wrong-answer feedback, keyboard answer selection, generated sprite loading, full desktop frame fitting, and mobile layout without horizontal overflow at 390px.
