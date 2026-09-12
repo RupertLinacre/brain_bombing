@@ -8,9 +8,9 @@ import {
   type View,
 } from "./types";
 
-export type Hazard = { at: number; until: number; kind: "blast" | "wall" };
+export type Hazard = { at: number; until: number; kind: "blast" };
 export type HazardMap = Map<string, Hazard[]>;
-type ArenaState = Pick<View, "map" | "bombs" | "flames" | "time" | "closing">;
+type ArenaState = Pick<View, "map" | "bombs" | "time">;
 
 /** One definition of blast geometry for simulation, warning tiles and the bot. */
 export function blastCells(
@@ -42,15 +42,8 @@ export function predictHazards(state: ArenaState, extra?: Bomb): HazardMap {
   const times = new Map(
     bombs.map((b) => [b.id, Math.max(state.time, b.explodesAt)]),
   );
-  let closing = state.closing;
-  if (closing) add(closing, { at: closing.at, until: Infinity, kind: "wall" });
   while (bombs.length) {
     const at = Math.min(...bombs.map((b) => times.get(b.id)!));
-    if (closing && closing.at <= at) {
-      map[closing.y][closing.x] = 1;
-      bombs = bombs.filter((b) => !same(b, closing!));
-      closing = null;
-    }
     const queue = bombs.filter((b) => times.get(b.id)! <= at);
     const fired = new Set<number>(),
       crates: Point[] = [];

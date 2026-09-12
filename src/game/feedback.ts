@@ -17,7 +17,6 @@ export type FrameFeedback = {
   stepped: boolean;
   deaths: PlayerId[];
   hits: PlayerId[];
-  warning: boolean;
 };
 
 /** Presentation follows authoritative events, never a guessed change in bomb count. */
@@ -90,7 +89,6 @@ export class FeedbackTracker {
             .filter((p) => p.lives < before.players[p.id].lives)
             .map((p) => p.id)
         : [],
-      warning: !!before && before.remaining > 45 && view.remaining <= 45,
     };
     this.previous = view;
     return result;

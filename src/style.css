@@ -296,10 +296,6 @@ button svg {
   color: #859e9a;
   margin-top: 2px;
 }
-.timer.urgent strong,
-.timer.urgent small {
-  color: #ff9983;
-}
 .play-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 306px;

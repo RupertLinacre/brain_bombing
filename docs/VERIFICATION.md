@@ -1,8 +1,8 @@
 # Verification
 
-Checked locally on 11 September 2026.
+Checked locally on 12 September 2026.
 
-- `npm test`: 48 passing tests. Includes 560 generated questions spanning all seven year levels, private per-player snapshots, answer validation/replay prevention, bomb consumption and blocking, cross-shaped blast geometry, chain reactions, three-life rounds, instant-only damage, narrow-lane collision, live questions, pickups, sudden death, computer behaviour, and short keyboard taps.
+- `npm test`: 48 passing tests. Includes 560 generated questions spanning all seven year levels, private per-player snapshots, answer validation/replay prevention, bomb consumption and blocking, cross-shaped blast geometry, chain reactions, three-life rounds, instant-only damage, narrow-lane collision, live questions, pickups, full-length arena rounds, computer behaviour, and short keyboard taps.
 - `npm run build`: TypeScript checks and Vite production build pass.
 - `npm audit`: no known vulnerabilities in the installed dependency tree.
 - Browser checks: start screen, computer game, four-choice question presentation, wrong-answer feedback, keyboard answer selection, generated sprite loading, full desktop frame fitting, and mobile layout without horizontal overflow at 390px.
@@ -22,7 +22,7 @@ The networking check used separate browser processes on this machine through Pee
 
 - All three layouts checked over 40 seeds each for symmetric terrain and three reachable private brains per player.
 - Progression scenarios verify exactly one bomb per answer, one reach upgrade every third solved brain, the six-tile cap, equal rules for both players, wrong-answer handling, and unchanged reach on bombs already placed.
-- Hazard scenarios cover early chain detonation, later blasts passing through destroyed crates, simultaneous blasts still stopped by crates, fire expiry, and permanent closing tiles. Bot scenarios check choosing an attack lane, escaping its own blast, and refusing a placement without an escape.
+- Hazard scenarios cover early chain detonation, later blasts passing through destroyed crates, simultaneous blasts still stopped by crates, and fire expiry. Bot scenarios check choosing an attack lane, escaping its own blast, and refusing a placement without an escape.
 - Countdown scenarios verify that movement, answers, bombs, the bot, and the match clock wait for the shared start.
 - Actual browser play at desktop and 390px phone widths: select Ember Works, walk to three brains, use both keyboard and clicked answers, earn exactly three bombs and the reach upgrade, place a bomb, see its floor warning, escape, and use the rematch button to reach Neon Arcade. No horizontal overflow on the phone layout.
 - Two browser contexts connected through the real PeerJS service: the guest sees the host-selected Ember Works, the shared countdown and correct Coral identity; rematch readiness and the second countdown switch both screens to Neon Arcade. Guest page reported no errors.

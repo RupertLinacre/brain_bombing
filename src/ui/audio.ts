@@ -293,7 +293,6 @@ export class GameAudio {
     if (events.question) this.play("question");
     if (events.stepped && !events.question)
       this.play("step", pan(view.players[local].x));
-    if (events.warning) this.play("warning");
   }
 
   private scheduleMusic(): void {

@@ -298,19 +298,18 @@ describe("arena combat", () => {
     expect(g.players[0].range).toBe(6);
     expect(g.players[0].speed).toBe(1);
   });
-  it("warns before sudden-death walls land and stops ended rounds", () => {
+  it("keeps the arena open until the three-minute timeout and stops ended rounds", () => {
     const g = game();
     clear(g);
+    const originalMap = g.map.map((row) => [...row]);
     g.time = 135;
-    g.step();
-    expect(g.closing).not.toBeNull();
-    const closing = g.closing!;
-    Object.assign(g.players[0], { x: closing.x, y: closing.y });
-    g.players[0].lives = 1;
-    expect(g.map[closing.y][closing.x]).toBe(0);
-    advance(g, 0.85);
-    expect(g.map[closing.y][closing.x]).toBe(1);
-    expect(g.winner).toBe(1);
+    advance(g, 44.9);
+    expect(g.phase).toBe("playing");
+    expect(g.map).toEqual(originalMap);
+    advance(g, 0.15);
+    expect(g.phase).toBe("ended");
+    expect(g.winner).toBe("draw");
+    expect(g.map).toEqual(originalMap);
     const time = g.time;
     advance(g, 2);
     expect(g.time).toBe(time);

@@ -211,7 +211,6 @@ export class ArenaEffects {
           4,
         );
     }
-    if (events.warning) this.word(450, 310, "SUDDEN DEATH!", "#ffa48a", true);
     // Bound cost when a crowded arena chain-detonates in one snapshot.
     this.particles = this.particles.slice(-500);
     this.rings = this.rings.slice(-24);

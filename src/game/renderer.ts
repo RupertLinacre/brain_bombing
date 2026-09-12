@@ -247,15 +247,6 @@ export class Renderer {
       ctx.arc(x, y, 23, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * fuse);
       ctx.stroke();
     }
-    if (view.closing) {
-      const x = view.closing.x * TILE,
-        y = view.closing.y * TILE;
-      ctx.fillStyle = `rgba(255,100,77,${0.22 + Math.sin(pulse * 15) * 0.12})`;
-      ctx.fillRect(x, y, TILE, TILE);
-      ctx.strokeStyle = "#ff9478";
-      ctx.lineWidth = 3;
-      ctx.strokeRect(x + 3, y + 3, TILE - 6, TILE - 6);
-    }
     const liveFlames = view.flames.filter((f) => f.expiresAt > renderTime);
     const flameCells = new Set(liveFlames.map(key));
     const drawn = new Set<string>();

@@ -485,13 +485,11 @@ function renderHud(): void {
   const sec = Math.ceil(view.remaining);
   $("#time").innerHTML =
     `${String(Math.floor(sec / 60)).padStart(2, "0")}<span>:</span>${String(sec % 60).padStart(2, "0")}`;
-  $(".timer").classList.toggle("urgent", screen === "game" && sec <= 45);
   $("#round-label").textContent =
     screen === "game"
       ? `ROUND ${String(round).padStart(2, "0")}`
       : "READY TO RUMBLE?";
-  $("#timer-caption").textContent =
-    screen === "game" && sec <= 45 ? "ARENA CLOSING IN" : "FIRST TO 3 WINS";
+  $("#timer-caption").textContent = "FIRST TO 3 WINS";
 }
 
 function renderCountdown(): void {
@@ -598,10 +596,7 @@ function renderSide(): void {
   const danger = nextHazard(predictHazards(view), p, view.time);
   const threatened = !!danger && p.alive && view.phase === "playing";
   $("#danger-banner").hidden = !threatened;
-  $("#danger-banner").textContent =
-    danger?.kind === "wall"
-      ? "Closing tile — move now!"
-      : "Blast incoming — move now!";
+  $("#danger-banner").textContent = "Blast incoming — move now!";
   $(".canvas-wrap").classList.toggle("in-danger", threatened);
   const live = document.querySelector("#question-live");
   if (live) {
@@ -776,7 +771,7 @@ $("#help").onclick = () => {
   }
   showModal(
     "help",
-    `<span class="eyebrow">A QUICK FIELD GUIDE</span><h2>A good brain is your best weapon.</h2><div class="how-steps"><div><img src="${asset("brain")}" alt=""/><span><b>01 · Think</b>Walk into one of your pink brains. Click the answer or press 1–4. A correct answer earns one bomb. Wrong answers earn nothing; try again.</span></div><div><img src="${asset("bomb")}" alt=""/><span><b>02 · Drop</b>Use arrows or WASD to move. Press Space to place a bomb. Every bomb costs one from your arsenal and has a 3.6-second fuse.</span></div><div><img src="${asset("fire")}" alt=""/><span><b>03 · Dodge</b>You have three lives. A blast only hurts at the instant it explodes, through the centre of its lane. The fire afterward is safe. Steel and crates stop blasts.</span></div></div><p class="help-detail">Every 3 solved brains earns +1 tile of flame reach, up to 6. Crates can also reveal flame pickups or shoes for more speed. Amber floor outlines warn where a bomb is about to explode. The host chooses the arenas in online matches. Questions stay private; bomb counts and bombs are shared. The arena closes in with 45 seconds left. First to 3 round wins takes the match.</p><p class="help-live">While answering, the arena keeps running. Move away or press Escape to close a question.${mode === "online" && screen === "game" ? " Your online match is live now." : ""}</p><button class="primary" id="help-close">Got it. Let's play ${icon("arrow")}</button>`,
+    `<span class="eyebrow">A QUICK FIELD GUIDE</span><h2>A good brain is your best weapon.</h2><div class="how-steps"><div><img src="${asset("brain")}" alt=""/><span><b>01 · Think</b>Walk into one of your pink brains. Click the answer or press 1–4. A correct answer earns one bomb. Wrong answers earn nothing; try again.</span></div><div><img src="${asset("bomb")}" alt=""/><span><b>02 · Drop</b>Use arrows or WASD to move. Press Space to place a bomb. Every bomb costs one from your arsenal and has a 3.6-second fuse.</span></div><div><img src="${asset("fire")}" alt=""/><span><b>03 · Dodge</b>You have three lives. A blast only hurts at the instant it explodes, through the centre of its lane. The fire afterward is safe. Steel and crates stop blasts.</span></div></div><p class="help-detail">Every 3 solved brains earns +1 tile of flame reach, up to 6. Crates can also reveal flame pickups or shoes for more speed. Amber floor outlines warn where a bomb is about to explode. The host chooses the arenas in online matches. Questions stay private; bomb counts and bombs are shared. First to 3 round wins takes the match.</p><p class="help-live">While answering, the arena keeps running. Move away or press Escape to close a question.${mode === "online" && screen === "game" ? " Your online match is live now." : ""}</p><button class="primary" id="help-close">Got it. Let's play ${icon("arrow")}</button>`,
   );
   $("#help-close").onclick = () => {
     paused = wasPaused;

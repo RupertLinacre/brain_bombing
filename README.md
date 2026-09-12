@@ -70,7 +70,7 @@ PeerJS's public signalling service needs internet access. Some school, corporate
 
 ## Computer opponent
 
-Professor Byte walks to its own brains, spends time answering, and earns the same one bomb per correct answer. It looks for useful crate-clearing or attacking placements and checks for an escape route. It scores reachable destinations for useful upgrades, efficient crate clearing, and attack lanes, and keeps a target to avoid unnecessary wandering. Escape planning accounts for movement timing, chain reactions, fire expiry, the closing arena, and crates destroyed by earlier bombs. **Chill** takes longer to answer and favours gentler attacks; **Clever** answers faster and prioritizes stronger attacking positions. Neither receives free ammunition or immunity.
+Professor Byte walks to its own brains, spends time answering, and earns the same one bomb per correct answer. It looks for useful crate-clearing or attacking placements and checks for an escape route. It scores reachable destinations for useful upgrades, efficient crate clearing, and attack lanes, and keeps a target to avoid unnecessary wandering. Escape planning accounts for movement timing, chain reactions, fire expiry, and crates destroyed by earlier bombs. **Chill** takes longer to answer and favours gentler attacks; **Clever** answers faster and prioritizes stronger attacking positions. Neither receives free ammunition or immunity.
 
 ## Project layout
 

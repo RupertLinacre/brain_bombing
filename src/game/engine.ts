@@ -58,7 +58,6 @@ export class Engine {
   explosions: Explosion[] = [];
   pickups: Pickup[] = [];
   brains: Brain[] = [];
-  closing: (Point & { at: number }) | null = null;
   controls: Control[] = [0, 1].map((id) => ({
     pending: null,
     direction: null,
@@ -76,7 +75,6 @@ export class Engine {
     at: 0,
   }));
   private nextId = 1;
-  private storm: Point[] = [];
   private randomState: number;
   private brainCooldown = 0;
 
@@ -106,15 +104,6 @@ export class Engine {
       solved: 0,
       facing: id ? "left" : "right",
     }));
-    for (let ring = 1; ring <= Math.floor(ROWS / 2); ring++) {
-      for (let x = ring; x < COLS - ring; x++) this.storm.push({ x, y: ring });
-      for (let y = ring + 1; y < ROWS - ring; y++)
-        this.storm.push({ x: COLS - ring - 1, y });
-      for (let x = COLS - ring - 2; x >= ring; x--)
-        this.storm.push({ x, y: ROWS - ring - 1 });
-      for (let y = ROWS - ring - 2; y > ring; y--)
-        this.storm.push({ x: ring, y });
-    }
     this.refillBrains();
   }
 
@@ -298,7 +287,6 @@ export class Engine {
     }
     this.explosions = this.explosions.filter((e) => this.time - e.at < 1.5);
     this.explodeDueBombs();
-    this.updateStorm();
     this.checkWallDamage();
     const alive = this.players.filter((p) => p.alive);
     if (alive.length < 2 || this.time >= ROUND_SECONDS) {
@@ -429,8 +417,7 @@ export class Engine {
           !this.bombs.some((bomb) => same(bomb, cell)) &&
           !this.flames.some((f) => same(f, cell)) &&
           !this.brains.some((brain) => same(brain, cell)) &&
-          !this.players.some((other) => other.id !== id && same(other, cell)) &&
-          (!this.closing || !same(this.closing, cell)),
+          !this.players.some((other) => other.id !== id && same(other, cell)),
       )
       .sort((a, b) => distance(a, spawn) - distance(b, spawn))[0];
     if (!safe) {
@@ -459,23 +446,6 @@ export class Engine {
     );
   }
 
-  private updateStorm(): void {
-    if (this.time < ROUND_SECONDS - 45) return;
-    if (this.closing && this.time >= this.closing.at) {
-      const cell = this.closing;
-      this.map[cell.y][cell.x] = 1;
-      this.bombs = this.bombs.filter((b) => !same(b, cell));
-      this.pickups = this.pickups.filter((b) => !same(b, cell));
-      this.brains = this.brains.filter((b) => !same(b, cell));
-      this.closing = null;
-    }
-    if (!this.closing) {
-      let next = this.storm.shift();
-      while (next && this.map[next.y][next.x] === 1) next = this.storm.shift();
-      if (next) this.closing = { ...next, at: this.time + 0.8 };
-    }
-  }
-
   private refillBrains(): void {
     for (const p of this.players) {
       if (!p.alive) continue;
@@ -492,8 +462,7 @@ export class Engine {
           !this.bombs.some((b) => same(b, cell)) &&
           !this.flames.some((f) => same(f, cell)) &&
           !this.pickups.some((item) => same(item, cell)) &&
-          !this.players.some((other) => same(other, cell)) &&
-          (!this.closing || !same(this.closing, cell)),
+          !this.players.some((other) => same(other, cell)),
       );
       while (
         this.brains.filter((b) => b.owner === p.id).length < 3 &&
@@ -551,7 +520,6 @@ export class Engine {
         })),
       activeBrain: this.activeBrain(id)?.id ?? null,
       feedback: { ...this.feedback[id] },
-      closing: this.closing && { ...this.closing },
     };
   }
 }

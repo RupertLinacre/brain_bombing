@@ -3,13 +3,7 @@ import type { ArenaId } from "./arenas";
 export type PlayerId = 0 | 1;
 export type Direction = "up" | "down" | "left" | "right";
 export type YearLevel =
-  | "reception"
-  | "year1"
-  | "year2"
-  | "year3"
-  | "year4"
-  | "year5"
-  | "year6";
+  "reception" | "year1" | "year2" | "year3" | "year4" | "year5" | "year6";
 export type Point = { x: number; y: number };
 export type Profile = { name: string; year: YearLevel };
 export type Player = Point & {
@@ -89,7 +83,6 @@ export type View = {
   brains: VisibleBrain[];
   activeBrain: number | null;
   feedback: Feedback;
-  closing: (Point & { at: number }) | null;
 };
 export type Action =
   | { type: "move"; direction: Direction | null }
