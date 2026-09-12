@@ -6,16 +6,20 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
+    "build:pages": "tsc --noEmit && vite build --base /brain_bombing/",
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "assets": "node scripts/prepare-sprites.mjs"
+    "assets": "node scripts/prepare-sprites.mjs",
+    "predeploy": "npm test && npm run build:pages",
+    "deploy": "gh-pages -d dist"
   },
   "dependencies": {
     "maths-game-problem-generator": "1.1.0",
     "peerjs": "^1.5.5"
   },
   "devDependencies": {
+    "gh-pages": "^6.3.0",
     "sharp": "^0.35.4",
     "typescript": "^5.9.3",
     "vite": "^7.1.5",

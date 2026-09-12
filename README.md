@@ -2,6 +2,8 @@
 
 A small Bomberman-inspired maths arena game. Everything lives inside one game frame, with an animated canvas arena and accessible HTML menus and answer buttons.
 
+Play the published game at [rupertlinacre.com/brain_bombing](https://rupertlinacre.com/brain_bombing/).
+
 ## Run it
 
 Requires Node.js 22.12+ (or a newer supported Node release).
@@ -20,6 +22,16 @@ npm run preview  # Serve the production build
 ```
 
 The production `dist/` folder can be served by any static web host. Relative asset paths support deployment in a subdirectory. No application server is required.
+
+## Deploy to GitHub Pages
+
+The `origin` remote points to `RupertLinacre/brain_bombing`. To test the game, build it with the `/brain_bombing/` base path, and publish `dist/` to the repository's `gh-pages` branch, run:
+
+```sh
+npm run deploy
+```
+
+GitHub Pages serves that project branch at `https://rupertlinacre.com/brain_bombing/`. The custom domain belongs to the account-level Pages site, so this project does not publish a separate `CNAME` file.
 
 ## How to play
 
