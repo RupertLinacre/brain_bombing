@@ -7,7 +7,6 @@ import {
   DIRECTIONS,
   FUSE_SECONDS,
   FLAME_SECONDS,
-  ROUND_SECONDS,
   BRAINS_PER_UPGRADE,
   BLAST_HALF_WIDTH,
   MAX_RANGE,
@@ -50,7 +49,7 @@ export class Engine {
   time = 0;
   tick = 0;
   phase: "playing" | "ended" = "playing";
-  winner: PlayerId | "draw" | null = null;
+  winner: PlayerId | null = null;
   map: number[][];
   players: Player[];
   bombs: Bomb[] = [];
@@ -289,9 +288,9 @@ export class Engine {
     this.explodeDueBombs();
     this.checkWallDamage();
     const alive = this.players.filter((p) => p.alive);
-    if (alive.length < 2 || this.time >= ROUND_SECONDS) {
+    if (alive.length === 1) {
       this.phase = "ended";
-      this.winner = alive.length === 1 ? alive[0].id : "draw";
+      this.winner = alive[0].id;
       this.controls.forEach((c) => (c.direction = null));
     }
     if (this.time > this.brainCooldown && this.phase === "playing") {
@@ -345,7 +344,14 @@ export class Engine {
       if (r < 0.38)
         this.pickups.push({ x, y, kind: r < 0.29 ? "fire" : "speed" });
     }
-    for (const id of hit) this.damagePlayer(id);
+    const deadHeat =
+      hit.size === this.players.length &&
+      this.players.every((p) => p.alive && p.lives === 1 && hit.has(p.id));
+    if (deadHeat) {
+      for (const p of this.players) this.respawnPlayer(p.id);
+      for (const p of this.players)
+        this.tell(p.id, "Dead heat — keep battling!", "info");
+    } else for (const id of hit) this.damagePlayer(id);
   }
 
   private updateVisualPositions(): void {
@@ -406,6 +412,16 @@ export class Engine {
       p.alive = false;
       return;
     }
+    this.respawnPlayer(id);
+    this.tell(
+      id,
+      `${p.lives} ${p.lives === 1 ? "life" : "lives"} left — shield up!`,
+      "bad",
+    );
+  }
+
+  private respawnPlayer(id: PlayerId): void {
+    const p = this.players[id];
     const spawn = { x: id ? COLS - 2 : 1, y: id ? ROWS - 2 : 1 };
     const safe = Array.from({ length: ROWS - 2 }, (_, y) =>
       Array.from({ length: COLS - 2 }, (_, x) => ({ x: x + 1, y: y + 1 })),
@@ -425,6 +441,7 @@ export class Engine {
       p.alive = false;
       return;
     }
+    p.alive = true;
     Object.assign(p, { ...safe, visualX: safe.x, visualY: safe.y });
     p.invulnerableUntil = this.time + RESPAWN_SHIELD_SECONDS;
     const c = this.controls[id];
@@ -439,11 +456,6 @@ export class Engine {
       moveStarted: this.time,
       moveDuration: 0,
     });
-    this.tell(
-      id,
-      `${p.lives} ${p.lives === 1 ? "life" : "lives"} left — shield up!`,
-      "bad",
-    );
   }
 
   private refillBrains(): void {
@@ -493,7 +505,6 @@ export class Engine {
       readyIn: this.readyIn,
       tick: this.tick,
       time: this.time,
-      remaining: Math.max(0, ROUND_SECONDS - this.time),
       phase: this.phase,
       winner: this.winner,
       map: this.map.map((row) => [...row]),

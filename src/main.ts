@@ -61,7 +61,7 @@ $("#app").innerHTML = `
   </header>
   <section class="scoreboard" aria-label="Match status">
     <div class="player-stat teal"><img src="${asset("player-teal")}" alt="Teal player"/><div><span class="eyebrow" id="player0-role">PLAYER 1</span><strong id="player0-name">You</strong><span class="player-details"><span><img src="${asset("bomb")}" alt="Bombs"/><b id="player0-bombs">0</b></span><span><img src="${asset("fire")}" alt="Flame reach"/><b id="player0-range">2</b></span><span class="life-count" id="player0-lives" aria-label="3 lives">♥♥♥</span></span></div><div class="round-dots" id="wins0" aria-label="0 rounds won"></div></div>
-    <div class="timer"><span id="round-label">READY TO RUMBLE?</span><strong id="time">03<span>:</span>00</strong><small id="timer-caption">FIRST TO 3 WINS</small></div>
+    <div class="timer"><span id="round-label">READY TO RUMBLE?</span><strong id="time">00<span>:</span>00</strong><small id="timer-caption">FIRST TO 3 WINS</small></div>
     <div class="player-stat coral"><div class="round-dots" id="wins1" aria-label="0 rounds won"></div><div><span class="eyebrow" id="player1-role">PLAYER 2</span><strong id="player1-name">Professor Byte</strong><span class="player-details"><span class="life-count" id="player1-lives" aria-label="3 lives">♥♥♥</span><span><img src="${asset("bomb")}" alt="Bombs"/><b id="player1-bombs">0</b></span><span><img src="${asset("fire")}" alt="Flame reach"/><b id="player1-range">2</b></span></span></div><img src="${asset("player-coral")}" alt="Coral player"/></div>
   </section>
   <div class="play-layout">
@@ -482,7 +482,7 @@ function renderHud(): void {
     ).join("");
     $(`#wins${p.id}`).setAttribute("aria-label", `${wins[p.id]} rounds won`);
   }
-  const sec = Math.ceil(view.remaining);
+  const sec = Math.floor(view.time);
   $("#time").innerHTML =
     `${String(Math.floor(sec / 60)).padStart(2, "0")}<span>:</span>${String(sec % 60).padStart(2, "0")}`;
   $("#round-label").textContent =
@@ -654,15 +654,9 @@ function afterView(): void {
   if (view.phase === "ended" && !countedEnd) {
     countedEnd = true;
     held = [];
-    if (view.winner !== "draw" && view.winner !== null) wins[view.winner]++;
+    if (view.winner !== null) wins[view.winner]++;
     audio.setActive(false);
-    audio.play(
-      view.winner === local
-        ? "win"
-        : view.winner === "draw"
-          ? "warning"
-          : "lose",
-    );
+    audio.play(view.winner === local ? "win" : "lose");
     renderHud();
     resultTimer = setTimeout(() => {
       if (screen === "game" && view.phase === "ended" && !lost) showResult();
@@ -671,24 +665,21 @@ function afterView(): void {
 }
 
 function showResult(): void {
-  const draw = view.winner === "draw",
-    won = view.winner === local;
+  if (view.winner === null) return;
+  const winner = view.winner,
+    won = winner === local;
   const matchOver = Math.max(...wins) >= 3;
-  const title = draw
-    ? "A meeting of minds."
-    : won
-      ? matchOver
-        ? "You won the match!"
-        : "Brilliant bombing!"
-      : matchOver
-        ? "They won this match."
-        : "Outsmarted this time.";
-  const subtitle = draw
-    ? "It’s a draw. Time for another round."
-    : `${escapeHtml(profiles[view.winner as PlayerId].name)} wins ${matchOver ? "the match" : "the round"}.`;
+  const title = won
+    ? matchOver
+      ? "You won the match!"
+      : "Brilliant bombing!"
+    : matchOver
+      ? "They won this match."
+      : "Outsmarted this time.";
+  const subtitle = `${escapeHtml(profiles[winner].name)} wins ${matchOver ? "the match" : "the round"}.`;
   showModal(
     "result",
-    `<div class="result-art"><img src="${asset(draw ? "brain" : view.winner ? "player-coral" : "player-teal")}" alt="${draw ? "Brain" : "Winning player"}"/></div><span class="eyebrow">${matchOver ? "MATCH COMPLETE" : `ROUND ${round} COMPLETE`}</span><h2>${title}</h2><p>${subtitle}</p><div class="result-score"><span class="teal-text">${wins[0]}</span><i>—</i><span class="coral-text">${wins[1]}</span></div><div class="result-stats"><span><b>${view.players[local].solved}</b> brains solved</span><span><b>${view.players[local].range}</b> tile flame reach</span></div><button class="primary" id="next-round">${mode === "online" && session.role === "guest" ? "Ready for another?" : matchOver ? "Play a new match" : "Next round"} ${icon("arrow")}</button><p class="rematch-status" id="rematch-status"></p><button class="text-button" id="result-menu">Back to menu</button>`,
+    `<div class="result-art"><img src="${asset(winner ? "player-coral" : "player-teal")}" alt="Winning player"/></div><span class="eyebrow">${matchOver ? "MATCH COMPLETE" : `ROUND ${round} COMPLETE`}</span><h2>${title}</h2><p>${subtitle}</p><div class="result-score"><span class="teal-text">${wins[0]}</span><i>—</i><span class="coral-text">${wins[1]}</span></div><div class="result-stats"><span><b>${view.players[local].solved}</b> brains solved</span><span><b>${view.players[local].range}</b> tile flame reach</span></div><button class="primary" id="next-round">${mode === "online" && session.role === "guest" ? "Ready for another?" : matchOver ? "Play a new match" : "Next round"} ${icon("arrow")}</button><p class="rematch-status" id="rematch-status"></p><button class="text-button" id="result-menu">Back to menu</button>`,
   );
   $("#result-menu").onclick = showMenu;
   $("#next-round").onclick = () => {

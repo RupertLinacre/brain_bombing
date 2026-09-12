@@ -71,9 +71,8 @@ export type View = {
   readyIn: number;
   tick: number;
   time: number;
-  remaining: number;
   phase: "playing" | "ended";
-  winner: PlayerId | "draw" | null;
+  winner: PlayerId | null;
   map: number[][];
   players: Player[];
   bombs: Bomb[];
@@ -91,7 +90,6 @@ export type Action =
   | { type: "dismiss" };
 export const COLS = 15;
 export const ROWS = 11;
-export const ROUND_SECONDS = 180;
 export const FUSE_SECONDS = 3.6;
 export const FLAME_SECONDS = 0.65;
 export const STARTING_LIVES = 3;

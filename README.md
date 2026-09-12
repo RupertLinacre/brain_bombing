@@ -47,7 +47,7 @@ GitHub Pages serves that project branch at `https://rupertlinacre.com/brain_bomb
 - Every **3 solved brains** also earns **+1 tile of flame reach**, up to 6. The brain-power meter shows your progress, including while answering. Each correct answer still earns exactly one bomb; wrong answers do not advance progress.
 - Amber dashed tiles warn of a blast in its final **1.1 seconds**. A **move now** banner appears whenever your tile is threatened, including while answering. Warnings account for chain reactions and later blasts through already destroyed crates.
 - Crates sometimes reveal **flame** pickups (+1 tile of reach, from 2 to a maximum of 6) or **speed** pickups (up to 3 upgrades). Reach is captured when a bomb is placed.
-- Rounds last up to **3 minutes**. With **45 seconds left**, warning tiles turn into steel blocks in an inward spiral. Closing steel costs a life like a blast. Last survivor wins; simultaneous final hits or a timeout with both alive is a draw.
+- Rounds have **no time limit**. The clock counts upward and the arena stays open until one player wins. If both players take their final hit in the same explosion, they respawn on one life and keep battling.
 - The first player to win **3 rounds** wins the match. Equipment and the arena reset each round.
 
 ## Sound and effects

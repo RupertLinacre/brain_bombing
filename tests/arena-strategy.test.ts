@@ -167,7 +167,7 @@ describe("fair starts and better tactics", () => {
     expect(g.bombs).toHaveLength(0);
     expect(g.players[0].solved).toBe(0);
     expect({ x: g.players[1].x, y: g.players[1].y }).toEqual(start);
-    expect(g.view(1).remaining).toBe(180);
+    expect(g.view(1).time).toBe(0);
     expect(g.view(1).readyIn).toBeGreaterThan(0);
     advance(g, 0.05);
     expect(g.readyIn).toBe(0);

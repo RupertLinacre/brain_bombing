@@ -250,7 +250,7 @@ describe("arena combat", () => {
     expect(g.flames.some((f) => f.x === 7 && f.y === 3)).toBe(false);
     expect(g.flames.some((f) => f.x === 5 && f.y === 5)).toBe(true);
   });
-  it("the final life is lethal, and simultaneous final hits result in a draw", () => {
+  it("continues after simultaneous final hits instead of ending in a draw", () => {
     const g = game();
     clear(g);
     Object.assign(g.players[0], { x: 3, y: 3 });
@@ -259,9 +259,10 @@ describe("arena combat", () => {
     g.players[0].bombs = 1;
     g.act(0, { type: "bomb" });
     advance(g, 3.7);
-    expect(g.players.every((p) => !p.alive)).toBe(true);
-    expect(g.phase).toBe("ended");
-    expect(g.winner).toBe("draw");
+    expect(g.players.every((p) => p.alive && p.lives === 1)).toBe(true);
+    expect(g.players.every((p) => p.invulnerableUntil > g.time)).toBe(true);
+    expect(g.phase).toBe("playing");
+    expect(g.winner).toBeNull();
   });
   it("does not pause bombs while answering a question", () => {
     const g = game(),
@@ -298,21 +299,16 @@ describe("arena combat", () => {
     expect(g.players[0].range).toBe(6);
     expect(g.players[0].speed).toBe(1);
   });
-  it("keeps the arena open until the three-minute timeout and stops ended rounds", () => {
+  it("keeps the arena open with no time limit", () => {
     const g = game();
     clear(g);
     const originalMap = g.map.map((row) => [...row]);
-    g.time = 135;
-    advance(g, 44.9);
+    g.time = 24 * 60 * 60;
+    advance(g, 120);
     expect(g.phase).toBe("playing");
     expect(g.map).toEqual(originalMap);
-    advance(g, 0.15);
-    expect(g.phase).toBe("ended");
-    expect(g.winner).toBe("draw");
-    expect(g.map).toEqual(originalMap);
-    const time = g.time;
-    advance(g, 2);
-    expect(g.time).toBe(time);
+    expect(g.winner).toBeNull();
+    expect(g.time).toBeGreaterThan(24 * 60 * 60);
   });
 });
 
