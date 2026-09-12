@@ -224,6 +224,17 @@ button svg {
 .player-details b {
   font-weight: 600;
 }
+.life-count {
+  color: #ff8e86;
+  font-size: 12px;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  text-shadow: 0 0 8px #ff746450;
+}
+.teal .life-count {
+  color: #76ecd4;
+  text-shadow: 0 0 8px #51e3d250;
+}
 .coral {
   justify-content: flex-end;
   text-align: right;

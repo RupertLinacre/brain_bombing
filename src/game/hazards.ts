@@ -39,16 +39,8 @@ export function predictHazards(state: ArenaState, extra?: Bomb): HazardMap {
     list.push(hazard);
     result.set(key(cell), list);
   };
-  for (const flame of state.flames)
-    if (flame.expiresAt > state.time)
-      add(flame, { at: state.time, until: flame.expiresAt, kind: "blast" });
   const times = new Map(
-    bombs.map((b) => [
-      b.id,
-      state.flames.some((f) => same(f, b) && f.expiresAt > state.time)
-        ? state.time
-        : Math.max(state.time, b.explodesAt),
-    ]),
+    bombs.map((b) => [b.id, Math.max(state.time, b.explodesAt)]),
   );
   let closing = state.closing;
   if (closing) add(closing, { at: closing.at, until: Infinity, kind: "wall" });

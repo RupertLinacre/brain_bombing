@@ -154,6 +154,63 @@ describe("arena combat", () => {
     expect(g.bombs).toHaveLength(1);
     expect(g.players[0].bombs).toBe(1);
   });
+  it("starts each player with three lives and gives placed bombs a 3.6-second fuse", () => {
+    const g = game();
+    expect(g.players.map((p) => p.lives)).toEqual([3, 3]);
+    g.players[0].bombs = 1;
+    g.act(0, { type: "bomb" });
+    expect(g.bombs[0].explodesAt - g.time).toBeCloseTo(3.6);
+    advance(g, 3.55);
+    expect(g.bombs).toHaveLength(1);
+    advance(g, 0.1);
+    expect(g.bombs).toHaveLength(0);
+  });
+  it("loses one life on an explosion, respawns safely, and gets a short shield", () => {
+    const g = game();
+    clear(g);
+    Object.assign(g.players[0], { x: 5, y: 5, visualX: 5, visualY: 5 });
+    g.bombs = [
+      { id: 90, x: 5, y: 5, owner: 1, range: 2, explodesAt: 0.01, pass: [] },
+      { id: 93, x: 5, y: 3, owner: 1, range: 3, explodesAt: 0.01, pass: [] },
+    ];
+    g.step();
+    expect(g.players[0].lives).toBe(2);
+    expect(g.players[0].alive).toBe(true);
+    expect(g.players[0]).toMatchObject({ x: 1, y: 1, visualX: 1, visualY: 1 });
+    expect(g.players[0].invulnerableUntil).toBeGreaterThan(g.time);
+    // A simultaneous overlapping blast costs only one life.
+    expect(g.players[0].lives).toBe(2);
+  });
+  it("makes the lingering flame visual-only and does not let it trigger a later bomb", () => {
+    const g = game();
+    clear(g);
+    Object.assign(g.players[0], { x: 5, y: 5, visualX: 5, visualY: 5 });
+    g.flames = [{ x: 5, y: 5, owner: 1, expiresAt: 0.6 }];
+    g.bombs = [
+      { id: 91, x: 5, y: 5, owner: 0, range: 2, explodesAt: 10, pass: [] },
+    ];
+    advance(g, 0.5);
+    expect(g.players[0].lives).toBe(3);
+    expect(g.bombs).toHaveLength(1);
+  });
+  it("only hits the centre of a blast lane, so a player mostly clear survives", () => {
+    const scenario = (explodesAt: number) => {
+      const g = game();
+      clear(g);
+      Object.assign(g.players[0], { x: 5, y: 5, visualX: 5, visualY: 5 });
+      Object.assign(g.players[1], { x: 11, y: 8, visualX: 11, visualY: 8 });
+      g.bombs = [
+        { id: 92, x: 3, y: 5, owner: 1, range: 3, explodesAt, pass: [] },
+      ];
+      g.act(0, { type: "move", direction: "up" });
+      advance(g, explodesAt + 0.01);
+      return g;
+    };
+    // About 30% out of the lane: the player's centre is still caught.
+    expect(scenario(0.1).players[0].lives).toBe(2);
+    // More than halfway into the next tile: the player's centre has cleared it.
+    expect(scenario(0.15).players[0].lives).toBe(3);
+  });
   it("lets a player leave a new bomb but blocks returning through it", () => {
     const g = game();
     clear(g);
@@ -193,14 +250,15 @@ describe("arena combat", () => {
     expect(g.flames.some((f) => f.x === 7 && f.y === 3)).toBe(false);
     expect(g.flames.some((f) => f.x === 5 && f.y === 5)).toBe(true);
   });
-  it("own bombs are lethal, and simultaneous deaths result in a draw", () => {
+  it("the final life is lethal, and simultaneous final hits result in a draw", () => {
     const g = game();
     clear(g);
     Object.assign(g.players[0], { x: 3, y: 3 });
     Object.assign(g.players[1], { x: 4, y: 3 });
+    g.players[0].lives = g.players[1].lives = 1;
     g.players[0].bombs = 1;
     g.act(0, { type: "bomb" });
-    advance(g, 2.7);
+    advance(g, 3.7);
     expect(g.players.every((p) => !p.alive)).toBe(true);
     expect(g.phase).toBe("ended");
     expect(g.winner).toBe("draw");
@@ -209,6 +267,7 @@ describe("arena combat", () => {
     const g = game(),
       brain = g.brains[0];
     Object.assign(g.players[0], { x: brain.x, y: brain.y });
+    g.players[0].lives = 1;
     g.bombs.push({
       id: 99,
       x: brain.x,
@@ -247,6 +306,7 @@ describe("arena combat", () => {
     expect(g.closing).not.toBeNull();
     const closing = g.closing!;
     Object.assign(g.players[0], { x: closing.x, y: closing.y });
+    g.players[0].lives = 1;
     expect(g.map[closing.y][closing.x]).toBe(0);
     advance(g, 0.85);
     expect(g.map[closing.y][closing.x]).toBe(1);

@@ -29,19 +29,20 @@ The production `dist/` folder can be served by any static web host. Relative ass
 - Each player starts with **zero bombs**. Walk into one of your pink brains and answer its question by clicking a choice or pressing **1–4**. A correct answer earns exactly **one consumable bomb**.
 - Questions use `maths-game-problem-generator` **1.1.0**, including its `expression_short`, four answer choices, and correct answer. Reception through Year 6 are supported. Each player chooses their own year.
 - Wrong answers earn nothing and briefly lock further attempts. Move away or press **Escape** to dismiss a question. **The arena keeps running while you answer.**
-- Press **Space** or the bomb button to place a bomb. Its fuse lasts **2.6 seconds**. You can step off a new bomb, but cannot walk back through it.
-- Blasts travel in a **cross**, stop at steel blocks, destroy the first crate in their path, and trigger other bombs. Your own explosions can eliminate you.
+- Press **Space** or the bomb button to place a bomb. Its fuse lasts **3.6 seconds**. You can step off a new bomb, but cannot walk back through it.
+- Each player has **three lives**. A hit removes one life, moves the player to a safe open tile near their starting corner, and gives them a 1.2-second respawn shield. The round ends when a player loses their final life.
+- Blasts travel in a **cross**, stop at steel blocks, destroy the first crate in their path, and trigger other bombs. The damaging part is a narrow strip through the centre of each lane, checked only at the instant of explosion. If your centre has mostly cleared the lane, you survive. The animated flame and smoke that remain afterward are visual effects and are safe to walk through.
 - Every **3 solved brains** also earns **+1 tile of flame reach**, up to 6. The brain-power meter shows your progress, including while answering. Each correct answer still earns exactly one bomb; wrong answers do not advance progress.
 - Amber dashed tiles warn of a blast in its final **1.1 seconds**. A **move now** banner appears whenever your tile is threatened, including while answering. Warnings account for chain reactions and later blasts through already destroyed crates.
 - Crates sometimes reveal **flame** pickups (+1 tile of reach, from 2 to a maximum of 6) or **speed** pickups (up to 3 upgrades). Reach is captured when a bomb is placed.
-- Rounds last up to **3 minutes**. With **45 seconds left**, warning tiles turn into steel blocks in an inward spiral. Last survivor wins; simultaneous deaths or a timeout with both alive is a draw.
+- Rounds last up to **3 minutes**. With **45 seconds left**, warning tiles turn into steel blocks in an inward spiral. Closing steel costs a life like a blast. Last survivor wins; simultaneous final hits or a timeout with both alive is a draw.
 - The first player to win **3 rounds** wins the match. Equipment and the arena reset each round.
 
 ## Sound and effects
 
 Sound is on by default, after your first click or key press. The speaker button mutes all audio; the music-note button independently toggles the quiet original arcade soundtrack. Both preferences are saved. Music fades out during a computer-game pause, after the round ends, and while the tab is hidden.
 
-Bombs have animated fuses and accelerating crackles, followed by a layered bass thump, crack, and rumble. Blasts add connected fire trails, sparks, smoke, rings, fragments cut from the original crate artwork, and brief comic captions. Correct answers and upgrades get their own bursts and jingles. Knockouts play before the result screen appears. All effects are cosmetic: blast reach, collision, fuse timing, and question rewards are unchanged.
+Bombs have animated fuses and accelerating crackles, followed by a layered bass thump, crack, and rumble. Blasts add connected fire trails, sparks, smoke, rings, fragments cut from the original crate artwork, and brief comic captions. Correct answers and upgrades get their own bursts and jingles. A lost life produces a respawn cue and visible shield; the final knockout plays before the result screen appears.
 
 The effects respect the browser's reduced-motion preference. Particle counts and audio layers are bounded, and a compressor controls overlapping sound levels. Everything is synthesized locally with Web Audio; no sound downloads or music service are needed.
 

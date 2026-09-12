@@ -176,6 +176,27 @@ export class ArenaEffects {
         );
       this.hops.set(local, 0.35);
     }
+    for (const id of events.hits) {
+      const hit = view.players[id],
+        hx = (hit.visualX + 0.5) * TILE,
+        hy = (hit.visualY + 0.5) * TILE;
+      this.rings.push({
+        x: hx,
+        y: hy,
+        life: 0.55,
+        max: 0.55,
+        radius: 48,
+        color: id ? "#ff9386" : "#6befd1",
+      });
+      if (id === local && hit.alive)
+        this.word(
+          hx,
+          hy - 28,
+          `${hit.lives} ${hit.lives === 1 ? "LIFE" : "LIVES"} LEFT`,
+          "#fff0a6",
+          true,
+        );
+    }
     for (const id of events.deaths) {
       this.deaths.set(id, 0);
       const p = view.players[id];

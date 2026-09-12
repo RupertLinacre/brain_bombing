@@ -289,6 +289,7 @@ export class GameAudio {
     if (events.solved) this.play("good");
     if (events.upgraded) this.play("power");
     if (events.wrong) this.play("bad");
+    if (events.hits.includes(local)) this.play("lose");
     if (events.question) this.play("question");
     if (events.stepped && !events.question)
       this.play("step", pan(view.players[local].x));

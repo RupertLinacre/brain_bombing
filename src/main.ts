@@ -60,9 +60,9 @@ $("#app").innerHTML = `
     </nav>
   </header>
   <section class="scoreboard" aria-label="Match status">
-    <div class="player-stat teal"><img src="${asset("player-teal")}" alt="Teal player"/><div><span class="eyebrow" id="player0-role">PLAYER 1</span><strong id="player0-name">You</strong><span class="player-details"><span><img src="${asset("bomb")}" alt="Bombs"/><b id="player0-bombs">0</b></span><span><img src="${asset("fire")}" alt="Flame reach"/><b id="player0-range">2</b></span></span></div><div class="round-dots" id="wins0" aria-label="0 rounds won"></div></div>
+    <div class="player-stat teal"><img src="${asset("player-teal")}" alt="Teal player"/><div><span class="eyebrow" id="player0-role">PLAYER 1</span><strong id="player0-name">You</strong><span class="player-details"><span><img src="${asset("bomb")}" alt="Bombs"/><b id="player0-bombs">0</b></span><span><img src="${asset("fire")}" alt="Flame reach"/><b id="player0-range">2</b></span><span class="life-count" id="player0-lives" aria-label="3 lives">♥♥♥</span></span></div><div class="round-dots" id="wins0" aria-label="0 rounds won"></div></div>
     <div class="timer"><span id="round-label">READY TO RUMBLE?</span><strong id="time">03<span>:</span>00</strong><small id="timer-caption">FIRST TO 3 WINS</small></div>
-    <div class="player-stat coral"><div class="round-dots" id="wins1" aria-label="0 rounds won"></div><div><span class="eyebrow" id="player1-role">PLAYER 2</span><strong id="player1-name">Professor Byte</strong><span class="player-details"><span><img src="${asset("bomb")}" alt="Bombs"/><b id="player1-bombs">0</b></span><span><img src="${asset("fire")}" alt="Flame reach"/><b id="player1-range">2</b></span></span></div><img src="${asset("player-coral")}" alt="Coral player"/></div>
+    <div class="player-stat coral"><div class="round-dots" id="wins1" aria-label="0 rounds won"></div><div><span class="eyebrow" id="player1-role">PLAYER 2</span><strong id="player1-name">Professor Byte</strong><span class="player-details"><span class="life-count" id="player1-lives" aria-label="3 lives">♥♥♥</span><span><img src="${asset("bomb")}" alt="Bombs"/><b id="player1-bombs">0</b></span><span><img src="${asset("fire")}" alt="Flame reach"/><b id="player1-range">2</b></span></span></div><img src="${asset("player-coral")}" alt="Coral player"/></div>
   </section>
   <div class="play-layout">
     <section class="arena-section" aria-label="Game arena">
@@ -470,6 +470,12 @@ function renderHud(): void {
         : `${p.id === local ? "YOU" : mode === "cpu" ? "COMPUTER" : "OPPONENT"} · ${p.id ? "CORAL" : "TEAL"}`;
     $(`#player${p.id}-bombs`).textContent = String(p.bombs);
     $(`#player${p.id}-range`).textContent = String(p.range);
+    const lives = $(`#player${p.id}-lives`);
+    lives.textContent = "♥".repeat(p.lives) + "♡".repeat(3 - p.lives);
+    lives.setAttribute(
+      "aria-label",
+      `${p.lives} ${p.lives === 1 ? "life" : "lives"} remaining`,
+    );
     $(`#wins${p.id}`).innerHTML = Array.from(
       { length: 3 },
       (_, i) => `<i class="${i < wins[p.id] ? "won" : ""}"></i>`,
@@ -770,7 +776,7 @@ $("#help").onclick = () => {
   }
   showModal(
     "help",
-    `<span class="eyebrow">A QUICK FIELD GUIDE</span><h2>A good brain is your best weapon.</h2><div class="how-steps"><div><img src="${asset("brain")}" alt=""/><span><b>01 · Think</b>Walk into one of your pink brains. Click the answer or press 1–4. A correct answer earns one bomb. Wrong answers earn nothing; try again.</span></div><div><img src="${asset("bomb")}" alt=""/><span><b>02 · Drop</b>Use arrows or WASD to move. Press Space to place a bomb. Every bomb costs one from your arsenal and has a 2.6-second fuse.</span></div><div><img src="${asset("fire")}" alt=""/><span><b>03 · Dodge</b>Blasts travel in a cross. Steel blocks stop them; crates break and stop that blast. Bombs trigger one another, and your own blasts can get you.</span></div></div><p class="help-detail">Every 3 solved brains earns +1 tile of flame reach, up to 6. Crates can also reveal flame pickups or shoes for more speed. Amber floor outlines warn where a bomb is about to explode. The host chooses the arenas in online matches. Questions stay private; bomb counts and bombs are shared. The arena closes in with 45 seconds left. First to 3 round wins takes the match.</p><p class="help-live">While answering, the arena keeps running. Move away or press Escape to close a question.${mode === "online" && screen === "game" ? " Your online match is live now." : ""}</p><button class="primary" id="help-close">Got it. Let's play ${icon("arrow")}</button>`,
+    `<span class="eyebrow">A QUICK FIELD GUIDE</span><h2>A good brain is your best weapon.</h2><div class="how-steps"><div><img src="${asset("brain")}" alt=""/><span><b>01 · Think</b>Walk into one of your pink brains. Click the answer or press 1–4. A correct answer earns one bomb. Wrong answers earn nothing; try again.</span></div><div><img src="${asset("bomb")}" alt=""/><span><b>02 · Drop</b>Use arrows or WASD to move. Press Space to place a bomb. Every bomb costs one from your arsenal and has a 3.6-second fuse.</span></div><div><img src="${asset("fire")}" alt=""/><span><b>03 · Dodge</b>You have three lives. A blast only hurts at the instant it explodes, through the centre of its lane. The fire afterward is safe. Steel and crates stop blasts.</span></div></div><p class="help-detail">Every 3 solved brains earns +1 tile of flame reach, up to 6. Crates can also reveal flame pickups or shoes for more speed. Amber floor outlines warn where a bomb is about to explode. The host chooses the arenas in online matches. Questions stay private; bomb counts and bombs are shared. The arena closes in with 45 seconds left. First to 3 round wins takes the match.</p><p class="help-live">While answering, the arena keeps running. Move away or press Escape to close a question.${mode === "online" && screen === "game" ? " Your online match is live now." : ""}</p><button class="primary" id="help-close">Got it. Let's play ${icon("arrow")}</button>`,
   );
   $("#help-close").onclick = () => {
     paused = wasPaused;

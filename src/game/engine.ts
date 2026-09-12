@@ -9,7 +9,10 @@ import {
   FLAME_SECONDS,
   ROUND_SECONDS,
   BRAINS_PER_UPGRADE,
+  BLAST_HALF_WIDTH,
   MAX_RANGE,
+  RESPAWN_SHIELD_SECONDS,
+  STARTING_LIVES,
   distance,
   same,
   key,
@@ -36,6 +39,10 @@ type Control = {
   until: number;
   nextMove: number;
   dismissed: number | null;
+  fromX: number;
+  fromY: number;
+  moveStarted: number;
+  moveDuration: number;
 };
 type QuestionFactory = (year: YearLevel) => Question;
 export class Engine {
@@ -52,12 +59,16 @@ export class Engine {
   pickups: Pickup[] = [];
   brains: Brain[] = [];
   closing: (Point & { at: number }) | null = null;
-  controls: Control[] = [0, 1].map(() => ({
+  controls: Control[] = [0, 1].map((id) => ({
     pending: null,
     direction: null,
     until: 0,
     nextMove: 0,
     dismissed: null,
+    fromX: id ? COLS - 2 : 1,
+    fromY: id ? ROWS - 2 : 1,
+    moveStarted: 0,
+    moveDuration: 0,
   }));
   feedback: Feedback[] = [0, 1].map(() => ({
     text: "Find a pink brain to earn your first bomb.",
@@ -85,6 +96,10 @@ export class Engine {
       x: id ? COLS - 2 : 1,
       y: id ? ROWS - 2 : 1,
       alive: true,
+      lives: STARTING_LIVES,
+      invulnerableUntil: 0,
+      visualX: id ? COLS - 2 : 1,
+      visualY: id ? ROWS - 2 : 1,
       bombs: 0,
       range: 2,
       speed: 0,
@@ -229,9 +244,9 @@ export class Engine {
     }
     this.time += dt;
     this.tick++;
+    this.updateVisualPositions();
     this.flames = this.flames.filter((f) => f.expiresAt > this.time);
-    // Fire is checked before movement too: a player cannot step out after being hit.
-    this.checkDeaths();
+    this.checkWallDamage();
     for (const p of this.players) {
       const c = this.controls[p.id];
       const direction = c.pending ?? c.direction;
@@ -247,10 +262,16 @@ export class Engine {
       const d = DIRECTIONS[direction],
         to = { x: p.x + d.x, y: p.y + d.y };
       if (this.walkable(to, p.id)) {
+        const duration = 0.17 - p.speed * 0.018;
+        const position = this.playerPosition(p.id);
+        c.fromX = position.visualX;
+        c.fromY = position.visualY;
+        c.moveStarted = this.time;
+        c.moveDuration = duration;
         p.x = to.x;
         p.y = to.y;
         c.dismissed = null;
-        c.nextMove = this.time + 0.17 - p.speed * 0.018;
+        c.nextMove = this.time + duration;
         for (const b of this.bombs)
           if (!same(b, p)) b.pass = b.pass.filter((id) => id !== p.id);
         const pickup = this.pickups.find((item) => same(item, p));
@@ -278,7 +299,7 @@ export class Engine {
     this.explosions = this.explosions.filter((e) => this.time - e.at < 1.5);
     this.explodeDueBombs();
     this.updateStorm();
-    this.checkDeaths();
+    this.checkWallDamage();
     const alive = this.players.filter((p) => p.alive);
     if (alive.length < 2 || this.time >= ROUND_SECONDS) {
       this.phase = "ended";
@@ -292,16 +313,17 @@ export class Engine {
   }
 
   private explodeDueBombs(): void {
-    const queue = this.bombs.filter(
-      (b) => b.explodesAt <= this.time || this.flames.some((f) => same(f, b)),
-    );
+    const queue = this.bombs.filter((b) => b.explodesAt <= this.time);
     const detonated = new Set<number>();
     const crates = new Set<string>();
+    const hit = new Set<PlayerId>();
     while (queue.length) {
       const bomb = queue.shift()!;
       if (detonated.has(bomb.id)) continue;
       detonated.add(bomb.id);
       const cells = this.blastCells(bomb);
+      for (const p of this.players)
+        if (this.playerInBlast(p.id, bomb, cells)) hit.add(p.id);
       this.explosions.push({
         id: bomb.id,
         x: bomb.x,
@@ -335,15 +357,106 @@ export class Engine {
       if (r < 0.38)
         this.pickups.push({ x, y, kind: r < 0.29 ? "fire" : "speed" });
     }
+    for (const id of hit) this.damagePlayer(id);
   }
 
-  private checkDeaths(): void {
+  private updateVisualPositions(): void {
+    for (const p of this.players) Object.assign(p, this.playerPosition(p.id));
+  }
+
+  private playerPosition(id: PlayerId): { visualX: number; visualY: number } {
+    const p = this.players[id],
+      c = this.controls[id];
+    // Tests and game setup sometimes reposition a player directly.
+    if (Math.abs(p.visualX - p.x) > 1.05 || Math.abs(p.visualY - p.y) > 1.05)
+      return { visualX: p.x, visualY: p.y };
+    if (!c.moveDuration) return { visualX: p.x, visualY: p.y };
+    const amount = Math.max(
+      0,
+      Math.min(1, (this.time - c.moveStarted) / c.moveDuration),
+    );
+    return {
+      visualX: c.fromX + (p.x - c.fromX) * amount,
+      visualY: c.fromY + (p.y - c.fromY) * amount,
+    };
+  }
+
+  private playerInBlast(id: PlayerId, bomb: Bomb, cells: Point[]): boolean {
+    const p = this.players[id];
+    if (!p.alive || p.invulnerableUntil > this.time) return false;
+    const position = this.playerPosition(id),
+      px = position.visualX,
+      py = position.visualY;
+    return cells.some((cell) => {
+      if (cell.x === bomb.x && cell.y === bomb.y)
+        return (
+          Math.abs(px - cell.x) <= BLAST_HALF_WIDTH &&
+          Math.abs(py - cell.y) <= BLAST_HALF_WIDTH
+        );
+      if (cell.y === bomb.y)
+        return (
+          Math.abs(py - cell.y) <= BLAST_HALF_WIDTH &&
+          Math.abs(px - cell.x) <= 0.5
+        );
+      return (
+        Math.abs(px - cell.x) <= BLAST_HALF_WIDTH &&
+        Math.abs(py - cell.y) <= 0.5
+      );
+    });
+  }
+
+  private checkWallDamage(): void {
     for (const p of this.players)
-      if (
-        p.alive &&
-        (this.map[p.y][p.x] === 1 || this.flames.some((f) => same(f, p)))
+      if (p.alive && this.map[p.y][p.x] === 1) this.damagePlayer(p.id);
+  }
+
+  private damagePlayer(id: PlayerId): void {
+    const p = this.players[id];
+    if (!p.alive || p.invulnerableUntil > this.time) return;
+    p.lives--;
+    if (p.lives <= 0) {
+      p.alive = false;
+      return;
+    }
+    const spawn = { x: id ? COLS - 2 : 1, y: id ? ROWS - 2 : 1 };
+    const safe = Array.from({ length: ROWS - 2 }, (_, y) =>
+      Array.from({ length: COLS - 2 }, (_, x) => ({ x: x + 1, y: y + 1 })),
+    )
+      .flat()
+      .filter(
+        (cell) =>
+          this.walkable(cell, id) &&
+          !this.bombs.some((bomb) => same(bomb, cell)) &&
+          !this.flames.some((f) => same(f, cell)) &&
+          !this.brains.some((brain) => same(brain, cell)) &&
+          !this.players.some((other) => other.id !== id && same(other, cell)) &&
+          (!this.closing || !same(this.closing, cell)),
       )
-        p.alive = false;
+      .sort((a, b) => distance(a, spawn) - distance(b, spawn))[0];
+    if (!safe) {
+      p.lives = 0;
+      p.alive = false;
+      return;
+    }
+    Object.assign(p, { ...safe, visualX: safe.x, visualY: safe.y });
+    p.invulnerableUntil = this.time + RESPAWN_SHIELD_SECONDS;
+    const c = this.controls[id];
+    Object.assign(c, {
+      pending: null,
+      direction: null,
+      until: 0,
+      nextMove: this.time + 0.15,
+      dismissed: null,
+      fromX: safe.x,
+      fromY: safe.y,
+      moveStarted: this.time,
+      moveDuration: 0,
+    });
+    this.tell(
+      id,
+      `${p.lives} ${p.lives === 1 ? "life" : "lives"} left — shield up!`,
+      "bad",
+    );
   }
 
   private updateStorm(): void {

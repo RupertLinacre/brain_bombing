@@ -17,6 +17,11 @@ export type Player = Point & {
   name: string;
   year: YearLevel;
   alive: boolean;
+  lives: number;
+  invulnerableUntil: number;
+  /** Continuous arena position used for rendering and forgiving blast collision. */
+  visualX: number;
+  visualY: number;
   bombs: number;
   range: number;
   speed: number;
@@ -94,8 +99,11 @@ export type Action =
 export const COLS = 15;
 export const ROWS = 11;
 export const ROUND_SECONDS = 180;
-export const FUSE_SECONDS = 2.6;
+export const FUSE_SECONDS = 3.6;
 export const FLAME_SECONDS = 0.65;
+export const STARTING_LIVES = 3;
+export const RESPAWN_SHIELD_SECONDS = 1.2;
+export const BLAST_HALF_WIDTH = 0.3;
 export const BRAINS_PER_UPGRADE = 3;
 export const MAX_RANGE = 6;
 export const DIRECTIONS: Record<Direction, Point> = {

@@ -2,7 +2,7 @@
 
 Checked locally on 11 September 2026.
 
-- `npm test`: 44 passing tests. Includes 560 generated questions spanning all seven year levels, private per-player snapshots, answer validation/replay prevention, bomb consumption and blocking, cross-shaped blast geometry, chain reactions, simultaneous deaths, live questions, pickups, sudden death, computer behaviour, and short keyboard taps.
+- `npm test`: 48 passing tests. Includes 560 generated questions spanning all seven year levels, private per-player snapshots, answer validation/replay prevention, bomb consumption and blocking, cross-shaped blast geometry, chain reactions, three-life rounds, instant-only damage, narrow-lane collision, live questions, pickups, sudden death, computer behaviour, and short keyboard taps.
 - `npm run build`: TypeScript checks and Vite production build pass.
 - `npm audit`: no known vulnerabilities in the installed dependency tree.
 - Browser checks: start screen, computer game, four-choice question presentation, wrong-answer feedback, keyboard answer selection, generated sprite loading, full desktop frame fitting, and mobile layout without horizontal overflow at 390px.
@@ -28,3 +28,11 @@ The networking check used separate browser processes on this machine through Pee
 - Two browser contexts connected through the real PeerJS service: the guest sees the host-selected Ember Works, the shared countdown and correct Coral identity; rematch readiness and the second countdown switch both screens to Neon Arcade. Guest page reported no errors.
 - Additional live WebRTC check verifies the arena ID, countdown, private Year 6 questions, and a guest's three-answer reach upgrade on the host. Room protocol prefix updated to keep older game builds out of the new rule set.
 - Audio lifecycle rechecked with the countdown: music stays silent until play begins, then plays normally; pause, music mute, and master mute reach zero. A tiny diagnostic input keeps the test audio graph processing so Chromium does not report stale gain values after notes have ended. Pause and help apply their fade directly.
+
+## Forgiving combat update
+
+- Unit scenarios verify the 3.6-second fuse, three starting lives, one life lost for overlapping simultaneous blasts, safe respawn with a temporary shield, and final-life round resolution.
+- Collision scenarios exercise a player moving perpendicular to a blast. The player is hit while their centre remains inside the 0.6-tile-wide lane and survives once mostly clear.
+- Lingering flames are verified as visual-only: standing or walking in them does not remove a life, and they do not ignite a bomb placed after the explosion instant. Bombs already in the original blast still chain immediately.
+- A browser playthrough verifies the three-heart HUD, 3.6-second placed fuse, two-heart update after a hit, safe respawn feedback, visible temporary shield, and safe occupation of a still-animated flame tile. The moving-player collision scenario produces two lives while near the lane centre and all three lives once mostly clear.
+- A live PeerJS host/guest check verifies that a guest receives the lost life, surviving state, respawn shield, and continuous arena position used by the narrow collision model. The room protocol prefix is versioned so older open builds cannot join matches using these new rules.

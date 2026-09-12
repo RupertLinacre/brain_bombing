@@ -316,8 +316,8 @@ export class Renderer {
     }
     for (const p of view.players) {
       const pos = this.positions[p.id],
-        x = (p.x + 0.5) * TILE,
-        y = (p.y + 0.5) * TILE;
+        x = (p.visualX + 0.5) * TILE,
+        y = (p.visualY + 0.5) * TILE;
       if (
         Math.abs(pos.x - x) + Math.abs(pos.y - y) > TILE * 3 ||
         preview ||
@@ -331,6 +331,15 @@ export class Renderer {
       pos.x += (x - pos.x) * lerp;
       pos.y += (y - pos.y) * lerp;
       ctx.globalAlpha = p.alive ? 1 : 0.23;
+      const shielded = p.alive && p.invulnerableUntil > view.time;
+      if (shielded) {
+        ctx.globalAlpha = 0.68 + Math.sin(pulse * 17) * 0.22;
+        ctx.strokeStyle = `${COLORS[p.id]}bb`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y - 8, 31 + Math.sin(pulse * 7) * 2, 0, Math.PI * 2);
+        ctx.stroke();
+      }
       ctx.fillStyle = `${COLORS[p.id]}35`;
       ctx.beginPath();
       ctx.ellipse(pos.x, pos.y + 17, 23, 9, 0, 0, Math.PI * 2);

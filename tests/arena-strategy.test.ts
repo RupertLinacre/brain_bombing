@@ -144,13 +144,13 @@ describe("public blast forecasts", () => {
     ];
     expect(nextHazard(predictHazards(g), { x: 7, y: 3 }, 0)).toBeUndefined();
   });
-  it("allows travel after fire burns out, but never after a storm tile closes", () => {
+  it("treats displayed fire as safe, but never allows a closed storm tile", () => {
     const g = make();
     open(g);
     g.flames = [{ x: 5, y: 5, owner: 0, expiresAt: 0.65 }];
     g.closing = { x: 6, y: 5, at: 0.8 };
     const danger = predictHazards(g);
-    expect(safeDuring(danger, { x: 5, y: 5 }, 0.1, 0.3)).toBe(false);
+    expect(safeDuring(danger, { x: 5, y: 5 }, 0.1, 0.3)).toBe(true);
     expect(safeDuring(danger, { x: 5, y: 5 }, 0.8, 1)).toBe(true);
     expect(safeDuring(danger, { x: 6, y: 5 }, 2, 3)).toBe(false);
   });
@@ -205,7 +205,7 @@ describe("fair starts and better tactics", () => {
     }
     expect(g.players[1].alive).toBe(true);
     expect(g.players[1].bombs).toBe(0);
-    expect(g.players[0].alive).toBe(false);
+    expect(g.players[0].lives).toBe(2);
   });
   it("does not spend its last bomb when there is no escape", () => {
     const g = make();

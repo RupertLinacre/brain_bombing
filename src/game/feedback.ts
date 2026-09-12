@@ -16,6 +16,7 @@ export type FrameFeedback = {
   question: boolean;
   stepped: boolean;
   deaths: PlayerId[];
+  hits: PlayerId[];
   warning: boolean;
 };
 
@@ -82,6 +83,11 @@ export class FeedbackTracker {
       deaths: before
         ? view.players
             .filter((p) => !p.alive && before.players[p.id].alive)
+            .map((p) => p.id)
+        : [],
+      hits: before
+        ? view.players
+            .filter((p) => p.lives < before.players[p.id].lives)
             .map((p) => p.id)
         : [],
       warning: !!before && before.remaining > 45 && view.remaining <= 45,
