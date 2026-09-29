@@ -70,7 +70,7 @@ $("#app").innerHTML = `
     </section>
     <aside class="side-panel" id="side-panel"></aside>
   </div>
-  <footer class="control-bar"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><i> / </i><span class="arrow-keys">↑ ← ↓ →</span> <b>Move</b></span><span><kbd class="wide">SPACE</kbd> <b>Drop bomb</b></span><span class="desktop-answer-hint"><kbd>ENTER</kbd> <b>Submit answer</b></span><span class="mobile-answer-hint"><b>Tap an answer</b></span></footer>
+  <footer class="control-bar"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><i> / </i><span class="arrow-keys">↑ ← ↓ →</span> <b>Move</b></span><span><kbd class="wide">SPACE</kbd> <b>Drop bomb</b></span><span class="desktop-answer-hint"><b>Type your answer</b></span><span class="mobile-answer-hint"><b>Tap an answer</b></span></footer>
   <div class="modal-backdrop" id="modal" hidden></div>
 </main>`;
 
@@ -536,7 +536,7 @@ function renderSide(): void {
         `${solvedProgress()}<div class="question-top"><span class="reward">+1 <img src="${asset("bomb")}" alt="bomb"/></span></div>
         <div class="question-art"><img src="${asset("brain")}" alt="Pink brain"/></div>
         <h2 class="question-expression">${escapeHtml(brain.expression)}</h2>
-        ${touchAnswers.matches ? `<div class="answer-options">${brain.choices.map((choice, i) => `<button class="answer ${brain.rejected.includes(i) ? "rejected" : ""}" data-answer="${i}" ${brain.rejected.includes(i) ? "disabled" : ""}><kbd>${i + 1}</kbd><span>${escapeHtml(choice)}</span>${brain.rejected.includes(i) ? "<i>×</i>" : ""}</button>`).join("")}</div>` : `<form id="typed-answer-form"><label for="typed-answer">Your answer</label><input id="typed-answer" type="text" maxlength="100" autocomplete="off" spellcheck="false" required/><button class="primary" type="submit">Submit <kbd>ENTER</kbd></button></form>`}
+        ${touchAnswers.matches ? `<div class="answer-options">${brain.choices.map((choice, i) => `<button class="answer ${brain.rejected.includes(i) ? "rejected" : ""}" data-answer="${i}" ${brain.rejected.includes(i) ? "disabled" : ""}><kbd>${i + 1}</kbd><span>${escapeHtml(choice)}</span>${brain.rejected.includes(i) ? "<i>×</i>" : ""}</button>`).join("")}</div>` : `<form id="typed-answer-form"><label for="typed-answer">Your answer</label><input id="typed-answer" type="text" maxlength="100" autocomplete="off" spellcheck="false" required/></form>`}
         <p class="live-note" id="question-live"><span></span> The arena is still live!</p><button class="text-button" id="dismiss-question">Move away or press <kbd>ESC</kbd></button>
         <div class="feedback" id="feedback" role="status"></div>`;
       document.querySelectorAll<HTMLButtonElement>("[data-answer]").forEach(
@@ -552,10 +552,17 @@ function renderSide(): void {
       );
       if (!touchAnswers.matches) {
         const input = $<HTMLInputElement>("#typed-answer");
+        const submitAnswer = () => {
+          if (input.value.trim())
+            act({ type: "typed-answer", brain: brain.id, answer: input.value });
+        };
+        input.addEventListener("input", (event) => {
+          if (!(event as InputEvent).isComposing) submitAnswer();
+        });
+        input.addEventListener("compositionend", submitAnswer);
         $("#typed-answer-form").onsubmit = (event) => {
           event.preventDefault();
-          act({ type: "typed-answer", brain: brain.id, answer: input.value });
-          input.select();
+          submitAnswer();
         };
         if (!modalKind && !paused) input.focus({ preventScroll: true });
       }
@@ -758,7 +765,7 @@ $("#help").onclick = () => {
   }
   showModal(
     "help",
-    `<span class="eyebrow">A QUICK FIELD GUIDE</span><h2>A good brain is your best weapon.</h2><div class="how-steps"><div><img src="${asset("brain")}" alt=""/><span><b>01 · Think</b>Walk into one of your pink brains. Type your answer and press Enter on desktop, or tap an answer on mobile. A correct answer earns one bomb. Wrong answers earn nothing; try again.</span></div><div><img src="${asset("bomb")}" alt=""/><span><b>02 · Drop</b>Use arrows or WASD to move. Press Space to place a bomb. Every bomb costs one from your arsenal and has a 3.6-second fuse.</span></div><div><img src="${asset("fire")}" alt=""/><span><b>03 · Dodge</b>You have three lives. A blast only hurts at the instant it explodes, through the centre of its lane. The fire afterward is safe. Steel and crates stop blasts.</span></div></div><p class="help-detail">Every 3 solved brains earns +1 tile of flame reach, up to 6. Crates can also reveal flame pickups or shoes for more speed. Amber floor outlines warn where a bomb is about to explode. The host chooses the arenas in online matches. Questions stay private; bomb counts and bombs are shared. First to 3 round wins takes the match.</p><p class="help-live">While answering, the arena keeps running. Move away or press Escape to close a question.${mode === "online" && screen === "game" ? " Your online match is live now." : ""}</p><button class="primary" id="help-close">Got it. Let's play ${icon("arrow")}</button>`,
+    `<span class="eyebrow">A QUICK FIELD GUIDE</span><h2>A good brain is your best weapon.</h2><div class="how-steps"><div><img src="${asset("brain")}" alt=""/><span><b>01 · Think</b>Walk into one of your pink brains. Type your answer on desktop, or tap an answer on mobile. Correct answers are accepted automatically. A correct answer earns one bomb. Wrong answers earn nothing; try again.</span></div><div><img src="${asset("bomb")}" alt=""/><span><b>02 · Drop</b>Use arrows or WASD to move. Press Space to place a bomb. Every bomb costs one from your arsenal and has a 3.6-second fuse.</span></div><div><img src="${asset("fire")}" alt=""/><span><b>03 · Dodge</b>You have three lives. A blast only hurts at the instant it explodes, through the centre of its lane. The fire afterward is safe. Steel and crates stop blasts.</span></div></div><p class="help-detail">Every 3 solved brains earns +1 tile of flame reach, up to 6. Crates can also reveal flame pickups or shoes for more speed. Amber floor outlines warn where a bomb is about to explode. The host chooses the arenas in online matches. Questions stay private; bomb counts and bombs are shared. First to 3 round wins takes the match.</p><p class="help-live">While answering, the arena keeps running. Move away or press Escape to close a question.${mode === "online" && screen === "game" ? " Your online match is live now." : ""}</p><button class="primary" id="help-close">Got it. Let's play ${icon("arrow")}</button>`,
   );
   $("#help-close").onclick = () => {
     paused = wasPaused;

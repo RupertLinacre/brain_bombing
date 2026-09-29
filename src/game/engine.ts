@@ -219,8 +219,8 @@ export class Engine {
           "good",
         );
         this.refillBrains();
-      } else {
-        if (action.type === "answer") b.rejected.push(action.choice);
+      } else if (action.type === "answer") {
+        b.rejected.push(action.choice);
         b.retryAt = this.time + 0.8;
         this.tell(id, "Not quite. Try another answer.", "bad");
       }

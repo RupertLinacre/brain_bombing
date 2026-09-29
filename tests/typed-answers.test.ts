@@ -24,7 +24,7 @@ describe("typed answers", () => {
     ])
       expect(answersMatch(a, b)).toBe(false);
   });
-  it("validates on the host, enforces retry delay and awards only once", () => {
+  it("validates on the host, ignores unfinished input and awards only once", () => {
     const g = new Engine(
       [
         { name: "A", year: "year1" },
@@ -32,22 +32,22 @@ describe("typed answers", () => {
       ],
       42,
       () => ({
-        expression: "3 + 4",
-        short: "3+4",
-        choices: ["6", "7", "8", "9"],
+        expression: "60 + 12",
+        short: "60+12",
+        choices: ["60", "72", "82", "90"],
         correct: 1,
       }),
     );
     const b = g.brains.find((b) => b.owner === 1)!;
     Object.assign(g.players[1], { x: b.x, y: b.y });
-    g.act(0, { type: "typed-answer", brain: b.id, answer: "7" });
+    g.act(0, { type: "typed-answer", brain: b.id, answer: "72" });
     expect(g.players[0].solved).toBe(0);
-    g.act(1, { type: "typed-answer", brain: b.id, answer: "6" });
     g.act(1, { type: "typed-answer", brain: b.id, answer: "7" });
     expect(g.players[1].solved).toBe(0);
-    g.step(0.85);
-    g.act(1, { type: "typed-answer", brain: b.id, answer: "7.0" });
-    g.act(1, { type: "typed-answer", brain: b.id, answer: "7" });
+    expect(b.retryAt).toBe(0);
+    expect(g.feedback[1].kind).not.toBe("bad");
+    g.act(1, { type: "typed-answer", brain: b.id, answer: "72.0" });
+    g.act(1, { type: "typed-answer", brain: b.id, answer: "72" });
     expect(g.players[1].solved).toBe(1);
     expect(g.players[1].bombs).toBe(1);
     expect(JSON.stringify(g.view(1))).not.toContain('"correct"');
