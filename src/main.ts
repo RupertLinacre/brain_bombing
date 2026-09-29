@@ -9,8 +9,6 @@ import { FeedbackTracker } from "./game/feedback";
 import { Session, type NetworkEvent } from "./network/session";
 import {
   YEARS,
-  BRAINS_PER_UPGRADE,
-  MAX_RANGE,
   yearLabel,
   type Action,
   type Direction,
@@ -68,12 +66,11 @@ $("#app").innerHTML = `
     <section class="arena-section" aria-label="Game arena">
       <div class="arena-heading"><span><b class="arena-light"></b> <span id="arena-name">CIRCUIT GARDEN</span></span><span id="arena-status">15 × 11 ARENA</span></div>
       <div class="canvas-wrap"><canvas id="arena" tabindex="0" aria-label="Brain Bombs arena. Move with arrow keys or W A S D. Walk into a brain to answer its question. Space places a bomb."></canvas><div class="arena-banner" id="arena-banner" hidden></div><div class="danger-banner" id="danger-banner" role="status" hidden>Blast incoming — move now!</div></div>
-      <div class="arena-bottom"><span><i class="private-dot"></i> Only you can see your brains</span><span id="arena-tip">A little maths. A lot of mayhem.</span></div>
       <div class="touch-controls" aria-label="Touch game controls"><div class="dpad"><button data-dir="up" aria-label="Move up">↑</button><button data-dir="left" aria-label="Move left">←</button><button data-dir="down" aria-label="Move down">↓</button><button data-dir="right" aria-label="Move right">→</button></div><button class="touch-bomb" id="touch-bomb"><img src="${asset("bomb")}" alt=""/> Drop bomb</button></div>
     </section>
     <aside class="side-panel" id="side-panel"></aside>
   </div>
-  <footer class="control-bar"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><i> / </i><span class="arrow-keys">↑ ← ↓ →</span> <b>Move</b></span><span><kbd class="wide">SPACE</kbd> <b>Drop bomb</b></span><span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> <b>Answer</b></span><span class="footer-note">THINK. DROP. DODGE.</span></footer>
+  <footer class="control-bar"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><i> / </i><span class="arrow-keys">↑ ← ↓ →</span> <b>Move</b></span><span><kbd class="wide">SPACE</kbd> <b>Drop bomb</b></span><span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> <b>Answer</b></span></footer>
   <div class="modal-backdrop" id="modal" hidden></div>
 </main>`;
 
@@ -200,7 +197,6 @@ function showMenu(): void {
   $("#mode-label").textContent = "THE THINK-FAST ARENA";
   $("#game-frame").classList.add("in-menu");
   $("#arena-status").textContent = "15 × 11 ARENA";
-  $("#arena-tip").textContent = "A little maths. A lot of mayhem.";
   $("#arena-banner").hidden = true;
   $("#danger-banner").hidden = true;
   $(".canvas-wrap").classList.remove("in-danger");
@@ -301,7 +297,6 @@ function renderArena(): void {
   $(".arena-light").style.background = theme.accent;
   $(".canvas-wrap").style.setProperty("--arena-accent", theme.accent);
   if (screen === "menu") $("#arena-status").textContent = theme.tag;
-  if (screen === "menu") $("#arena-tip").textContent = theme.description;
 }
 
 function showLobby(host: boolean): void {
@@ -368,7 +363,6 @@ function startRound(): void {
     mode === "cpu"
       ? `VS COMPUTER · ${botPace.toUpperCase()}`
       : `ONLINE · ROOM ${session.code}`;
-  $("#arena-tip").textContent = "Watch the fuse. Plan your escape.";
   $("#arena-status").textContent =
     mode === "online" ? "CONNECTED" : "LOCAL MATCH";
   audio.unlock();
@@ -469,8 +463,8 @@ function renderHud(): void {
       screen === "menu"
         ? p.id
           ? "OPPONENT"
-          : "YOU · TEAL"
-        : `${p.id === local ? "YOU" : mode === "cpu" ? "COMPUTER" : "OPPONENT"} · ${p.id ? "CORAL" : "TEAL"}`;
+          : "YOU"
+        : `${p.id === local ? "YOU" : mode === "cpu" ? "COMPUTER" : "OPPONENT"}`;
     $(`#player${p.id}-bombs`).textContent = String(p.bombs);
     $(`#player${p.id}-range`).textContent = String(p.range);
     const lives = $(`#player${p.id}-lives`);
@@ -514,12 +508,12 @@ function renderCountdown(): void {
   if (count === lastCountdown) return;
   lastCountdown = count;
   const theme = arenaInfo(view.arena);
-  banner.innerHTML = `<div class="round-intro"><span>ROUND ${String(round).padStart(2, "0")} · ${theme.name.toUpperCase()}</span><strong>${count}</strong><small class="${local ? "coral-text" : "teal-text"}">YOU ARE ${local ? "CORAL" : "TEAL"}</small><p>${count === "GO!" ? "THINK. DROP. DODGE." : "Find a brain. Earn your first bomb."}</p></div>`;
+  banner.innerHTML = `<div class="round-intro"><span>ROUND ${String(round).padStart(2, "0")} · ${theme.name.toUpperCase()}</span><strong>${count}</strong></div>`;
   audio.play(count === "GO!" ? "start" : "click");
 }
 
-function powerProgress(): string {
-  return `<div class="brain-power"><div class="power-heading"><span>BRAIN POWER</span><strong id="power-label"></strong></div><div class="power-track" id="power-progress" role="progressbar" aria-label="Brains toward next flame upgrade" aria-valuemin="0" aria-valuemax="${BRAINS_PER_UPGRADE}">${Array.from({ length: BRAINS_PER_UPGRADE }, () => "<i></i>").join("")}</div><p id="power-note"></p></div>`;
+function solvedProgress(): string {
+  return `<div class="maths-solved" role="status" aria-live="polite" aria-atomic="true"><strong id="maths-solved-count"></strong><span>Maths problems solved<small>This round</small></span></div>`;
 }
 
 function renderSide(): void {
@@ -533,12 +527,12 @@ function renderSide(): void {
     currentPanel = panelKey;
     if (brain) {
       $("#side-panel").innerHTML =
-        `<div class="question-top"><span class="eyebrow pink-text">BRAIN FOUND</span><span class="reward">+1 <img src="${asset("bomb")}" alt="bomb"/></span></div>
-        <div class="question-art"><img src="${asset("brain")}" alt="Pink brain"/></div><span class="question-level">${yearLabel(p.year)} · YOUR QUESTION</span>
-        <h2 class="question-expression">${escapeHtml(brain.expression)}</h2><p class="question-instruction">Choose the correct answer</p>
+        `${solvedProgress()}<div class="question-top"><span class="reward">+1 <img src="${asset("bomb")}" alt="bomb"/></span></div>
+        <div class="question-art"><img src="${asset("brain")}" alt="Pink brain"/></div>
+        <h2 class="question-expression">${escapeHtml(brain.expression)}</h2>
         <div class="answer-options">${brain.choices.map((choice, i) => `<button class="answer ${brain.rejected.includes(i) ? "rejected" : ""}" data-answer="${i}" ${brain.rejected.includes(i) ? "disabled" : ""}><kbd>${i + 1}</kbd><span>${escapeHtml(choice)}</span>${brain.rejected.includes(i) ? "<i>×</i>" : ""}</button>`).join("")}</div>
         <p class="live-note" id="question-live"><span></span> The arena is still live!</p><button class="text-button" id="dismiss-question">Move away or press <kbd>ESC</kbd></button>
-        ${powerProgress()}<div class="feedback" id="feedback" role="status"></div>`;
+        <div class="feedback" id="feedback" role="status"></div>`;
       document.querySelectorAll<HTMLButtonElement>("[data-answer]").forEach(
         (button) =>
           (button.onclick = () => {
@@ -555,14 +549,11 @@ function renderSide(): void {
         $("#arena").focus();
       };
     } else {
-      $("#side-panel").innerHTML =
-        `<div class="loadout-title"><span class="eyebrow">YOUR LOADOUT</span><span class="player-chip ${local ? "coral-chip" : ""}">${local ? "CORAL" : "TEAL"}</span></div>
+      $("#side-panel").innerHTML = `${solvedProgress()}
         <div class="arsenal"><img src="${asset("bomb")}" alt=""/><div><strong id="arsenal-count">${p.bombs}</strong><span>BOMBS READY</span></div></div>
         <button class="primary drop-button" id="drop-bomb">Drop a bomb <kbd>SPACE</kbd></button>
         <div class="loadout-stats"><div><img src="${asset("fire")}" alt=""/><span>Flame reach<strong id="flame-stat">${p.range} tiles</strong></span></div><div><img src="${asset("speed")}" alt=""/><span>Speed<strong id="speed-stat">${p.speed ? `+${p.speed}` : "Normal"}</strong></span></div></div>
-        <div class="brain-prompt"><img src="${asset("brain")}" alt=""/><h2>Feed your firepower.</h2><p>Walk into a pink brain.<br/>Solve its question. Earn a bomb.</p><span class="solved-count" id="solved-count">${p.solved} brains solved</span></div>
-        ${powerProgress()}<div class="feedback" id="feedback" role="status"></div>
-        <div class="pickup-tip"><img src="${asset("crate")}" alt=""/><span>Blast crates to find flame<br/>and speed power-ups.</span></div>`;
+        <div class="feedback" id="feedback" role="status"></div>`;
       $("#drop-bomb").onclick = () => {
         act({ type: "bomb" });
         $("#arena").focus();
@@ -573,29 +564,11 @@ function renderSide(): void {
     $("#arsenal-count").textContent = String(p.bombs);
     $("#flame-stat").textContent = `${p.range} tiles`;
     $("#speed-stat").textContent = p.speed ? `+${p.speed}` : "Normal";
-    $("#solved-count").textContent =
-      `${p.solved} brain${p.solved === 1 ? "" : "s"} solved`;
     $("#drop-bomb").classList.toggle("empty", p.bombs === 0);
   }
-  const maxed = p.range >= MAX_RANGE;
-  const progress = maxed ? BRAINS_PER_UPGRADE : p.solved % BRAINS_PER_UPGRADE;
-  $("#power-label").textContent = maxed
-    ? "MAX REACH"
-    : `${progress} / ${BRAINS_PER_UPGRADE}`;
-  $("#power-progress").setAttribute("aria-valuenow", String(progress));
-  const toGo = BRAINS_PER_UPGRADE - progress;
-  $("#power-progress").setAttribute(
-    "aria-valuetext",
-    maxed ? "Maximum flame reach" : `${toGo} more brains for a flame upgrade`,
-  );
-  $("#power-progress")
-    .querySelectorAll("i")
-    .forEach((pip, i) => pip.classList.toggle("filled", i < progress));
-  $("#power-note").textContent = maxed
-    ? "Keep solving. Every brain still earns a bomb."
-    : toGo === 1
-      ? "Next brain = bigger blasts!"
-      : `${toGo} more brains → +1 tile of flame reach`;
+  const solvedCount = $("#maths-solved-count");
+  if (solvedCount.textContent !== String(p.solved))
+    solvedCount.textContent = String(p.solved);
   const danger = nextHazard(predictHazards(view), p, view.time);
   const threatened = !!danger && p.alive && view.phase === "playing";
   $("#danger-banner").hidden = !threatened;
@@ -609,7 +582,10 @@ function renderSide(): void {
     live.classList.toggle("danger", threatened);
   }
   const feedback = $("#feedback");
-  const text = view.time - view.feedback.at < 5 ? view.feedback.text : "";
+  const text =
+    view.feedback.kind === "bad" && view.time - view.feedback.at < 5
+      ? view.feedback.text
+      : "";
   if (feedback.textContent !== text) feedback.textContent = text;
   feedback.className = `feedback ${view.feedback.kind}`;
 }
@@ -682,7 +658,7 @@ function showResult(): void {
   const subtitle = `${escapeHtml(profiles[winner].name)} wins ${matchOver ? "the match" : "the round"}.`;
   showModal(
     "result",
-    `<div class="result-art"><img src="${asset(winner ? "player-coral" : "player-teal")}" alt="Winning player"/></div><span class="eyebrow">${matchOver ? "MATCH COMPLETE" : `ROUND ${round} COMPLETE`}</span><h2>${title}</h2><p>${subtitle}</p><div class="result-score"><span class="teal-text">${wins[0]}</span><i>—</i><span class="coral-text">${wins[1]}</span></div><div class="result-stats"><span><b>${view.players[local].solved}</b> brains solved</span><span><b>${view.players[local].range}</b> tile flame reach</span></div><button class="primary" id="next-round">${mode === "online" && session.role === "guest" ? "Ready for another?" : matchOver ? "Play a new match" : "Next round"} ${icon("arrow")}</button><p class="rematch-status" id="rematch-status"></p><button class="text-button" id="result-menu">Back to menu</button>`,
+    `<div class="result-art"><img src="${asset(winner ? "player-coral" : "player-teal")}" alt="Winning player"/></div><span class="eyebrow">${matchOver ? "MATCH COMPLETE" : `ROUND ${round} COMPLETE`}</span><h2>${title}</h2><p>${subtitle}</p><div class="result-score"><span class="teal-text">${wins[0]}</span><i>—</i><span class="coral-text">${wins[1]}</span></div><div class="result-stats"><span><b>${view.players[local].solved}</b> maths problems solved</span><span><b>${view.players[local].range}</b> tile flame reach</span></div><button class="primary" id="next-round">${mode === "online" && session.role === "guest" ? "Ready for another?" : matchOver ? "Play a new match" : "Next round"} ${icon("arrow")}</button><p class="rematch-status" id="rematch-status"></p><button class="text-button" id="result-menu">Back to menu</button>`,
   );
   $("#result-menu").onclick = showMenu;
   $("#next-round").onclick = () => {

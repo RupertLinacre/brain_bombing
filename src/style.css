@@ -1971,3 +1971,42 @@ kbd {
 .icon-button.audio-off:hover {
   opacity: 1;
 }
+
+/* Keep the round's learning progress visible, including while answering. */
+.maths-solved {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 0 20px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+.maths-solved > strong {
+  font-size: 56px;
+  line-height: 1;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--teal, #51e3d2);
+}
+.maths-solved > span {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.maths-solved small {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 400;
+  color: #9cafad;
+}
+@media (max-width: 780px) {
+  .maths-solved {
+    padding: 8px 0 14px;
+    margin-bottom: 14px;
+  }
+  .maths-solved > strong {
+    font-size: 42px;
+  }
+}
