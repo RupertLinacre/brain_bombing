@@ -201,12 +201,12 @@ function showMenu(): void {
   $("#danger-banner").hidden = true;
   $(".canvas-wrap").classList.remove("in-danger");
   $("#side-panel").innerHTML = `
-    <div class="menu-intro"><span class="eyebrow">TWO PLAYERS. ONE SURVIVOR.</span><h1>BRAIN<br/><span>BOMBS</span><b>2</b></h1><p>Solve maths. Earn bombs.<br/>Outsmart your opponent.</p></div>
+    <div class="menu-intro"><h1>BRAIN<br/><span>BOMBS</span><b>2</b></h1></div>
     <div class="setup-fields"><label for="player-name">YOUR NAME</label><input id="player-name" maxlength="20" value="${escapeHtml(profile.name)}" autocomplete="nickname"/>
     <div class="field-pair"><div><label for="year-level">YOUR MATHS LEVEL</label><select id="year-level">${YEARS.map((y) => `<option value="${y}" ${y === profile.year ? "selected" : ""}>${yearLabel(y)}</option>`).join("")}</select></div><div><label for="bot-level">COMPUTER</label><select id="bot-level"><option value="starter" ${botPace === "starter" ? "selected" : ""}>Starter (age 7)</option><option value="chill" ${botPace === "chill" ? "selected" : ""}>Chill</option><option value="clever" ${botPace === "clever" ? "selected" : ""}>Clever</option></select></div></div>
     <div class="arena-choice"><label>YOUR FIRST ARENA</label><div class="arena-options" role="group" aria-label="Starting arena">${ARENAS.map((a) => `<button type="button" data-arena="${a.id}" aria-label="${a.name}: ${a.description}" aria-pressed="${a.id === selectedArena}" style="--arena-accent:${a.accent}">${arenaThumbnail(a.id)}<span>${a.name.split(" ").at(-1) === "Garden" ? "Garden" : a.id === "ember" ? "Ember" : "Neon"}</span></button>`).join("")}</div><label class="rotate-option"><input type="checkbox" id="rotate-arenas" ${rotateArenas ? "checked" : ""}/> New arena each round</label></div></div>
     <div class="mode-actions"><button class="primary" id="play-cpu">Play the computer ${icon("arrow")}</button><div class="friend-actions"><button class="secondary" id="create-room">Create room</button><button class="secondary" id="join-room">Join a friend</button></div></div>
-    <p class="menu-note">Play a friend on another computer.<br/>Each player chooses their own maths level.</p>
+    <p class="menu-note">Play a friend on another computer.</p>
     <div class="inline-status" id="menu-status" role="status"></div>`;
   document
     .querySelectorAll<HTMLButtonElement>("[data-arena]")

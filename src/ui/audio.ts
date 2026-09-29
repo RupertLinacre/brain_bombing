@@ -170,9 +170,9 @@ export class GameAudio {
   private active = false;
   private silent = false;
   private withMusic = true;
-  private musicStep = 0;
-  private nextNote = 0;
-  private scheduler?: ReturnType<typeof setInterval>;
+  private musicBuffer?: AudioBuffer;
+  private musicSource?: AudioBufferSourceNode;
+  private musicLoading?: Promise<void>;
   private lastExplosion = -1;
 
   get muted(): boolean {
@@ -206,8 +206,8 @@ export class GameAudio {
         this.master.connect(limiter);
         limiter.connect(ctx.destination);
         this.applyLevels();
-        this.scheduler = setInterval(() => this.scheduleMusic(), 90);
       }
+      void this.loadMusic();
       if (this.context.state === "suspended")
         void this.context.resume().catch(() => {});
     } catch {
@@ -218,10 +218,7 @@ export class GameAudio {
   setActive(active: boolean): void {
     if (this.active === active) return;
     this.active = active;
-    if (active && this.context) {
-      this.nextNote = this.context.currentTime + 0.1;
-      this.musicStep = 0;
-    }
+    if (active) this.startMusic();
     this.applyLevels();
   }
 
@@ -295,55 +292,46 @@ export class GameAudio {
       this.play("step", pan(view.players[local].x));
   }
 
-  private scheduleMusic(): void {
+  private async loadMusic(): Promise<void> {
     const ctx = this.context;
-    if (
-      !ctx ||
-      !this.music ||
-      !this.active ||
-      !this.withMusic ||
-      this.silent ||
-      ctx.state !== "running" ||
-      document.hidden
-    )
-      return;
-    if (this.nextNote < ctx.currentTime - 0.1) this.nextNote = ctx.currentTime;
-    // An original 8-bar pentatonic arcade groove at 108 bpm. Sparse enough for maths.
-    const melody = [
-      76, 0, 79, 0, 81, 79, 0, 76, 74, 0, 72, 0, 74, 0, 79, 0, 76, 0, 79, 81,
-      84, 0, 81, 0, 79, 0, 76, 0, 74, 0, 0, 0,
-    ];
-    const roots = [48, 45, 53, 55];
-    while (this.nextNote < ctx.currentTime + 0.16) {
-      const step = this.musicStep++,
-        at = this.nextNote;
-      const note = melody[step % melody.length],
-        root = roots[Math.floor(step / 16) % 4];
-      const hz = (midi: number) => 440 * 2 ** ((midi - 69) / 12);
-      if (note)
-        tone(ctx, this.music, hz(note), hz(note), at, 0.16, 0.22, "triangle");
-      if (step % 4 === 0)
-        tone(ctx, this.music, hz(root), hz(root), at, 0.25, 0.42, "triangle");
-      if (step % 4 === 2)
-        tone(
-          ctx,
-          this.music,
-          hz(root + 7),
-          hz(root + 7),
-          at,
-          0.13,
-          0.23,
-          "sine",
+    if (!ctx || this.musicBuffer) return;
+    if (this.musicLoading) return this.musicLoading;
+    this.musicLoading = (async () => {
+      try {
+        const response = await fetch(
+          new URL("../assets/soundtrack.mp3", import.meta.url),
         );
-      if (step % 2 === 0)
-        noise(ctx, this.music, at, 0.027, 0.055, 6000, 2500, true);
-      if (step % 8 === 0) tone(ctx, this.music, 90, 38, at, 0.11, 0.4);
-      this.nextNote += 60 / 108 / 2;
-    }
+        if (!response.ok) throw new Error("Unable to load soundtrack");
+        const buffer = await ctx.decodeAudioData(await response.arrayBuffer());
+        if (ctx.state === "closed") return;
+        this.musicBuffer = buffer;
+        if (this.active) this.startMusic();
+      } catch {
+        // A failed music download must not interrupt the game or sound effects.
+      } finally {
+        this.musicLoading = undefined;
+      }
+    })();
+    return this.musicLoading;
+  }
+
+  private startMusic(): void {
+    const ctx = this.context;
+    if (!ctx || !this.music || !this.musicBuffer || ctx.state === "closed")
+      return;
+    this.musicSource?.stop();
+    this.musicSource?.disconnect();
+    const source = ctx.createBufferSource();
+    source.buffer = this.musicBuffer;
+    source.loop = true;
+    source.connect(this.music);
+    source.start();
+    this.musicSource = source;
   }
 
   dispose(): void {
-    clearInterval(this.scheduler);
+    this.musicSource?.stop();
+    this.musicSource?.disconnect();
     void this.context?.close();
   }
 }

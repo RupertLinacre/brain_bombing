@@ -56,7 +56,7 @@ Sound is on by default, after your first click or key press. The speaker button 
 
 Bombs have animated fuses and accelerating crackles, followed by a layered bass thump, crack, and rumble. Blasts add connected fire trails, sparks, smoke, rings, fragments cut from the original crate artwork, and brief comic captions. Correct answers and upgrades get their own bursts and jingles. A lost life produces a respawn cue and visible shield; the final knockout plays before the result screen appears.
 
-The effects respect the browser's reduced-motion preference. Particle counts and audio layers are bounded, and a compressor controls overlapping sound levels. Everything is synthesized locally with Web Audio; no sound downloads or music service are needed.
+The effects respect the browser's reduced-motion preference. Particle counts and audio layers are bounded, and a compressor controls overlapping sound levels. Sound effects are synthesized locally with Web Audio. The soundtrack is bundled with the game and loops during play; no music service is needed.
 
 ## Two computers
 
@@ -81,7 +81,7 @@ Professor Byte walks to its own brains, spends time answering, and earns the sam
 - `src/game/questions.ts` — the shared maths library adapter.
 - `src/game/renderer.ts` / `src/game/effects.ts` — canvas drawing, sprite animation, and cosmetic explosion effects.
 - `src/game/feedback.ts` — one-time presentation cues from authoritative snapshots.
-- `src/ui/audio.ts` — original synthesized effects and the arcade music loop.
+- `src/ui/audio.ts` — original synthesized effects and bundled soundtrack playback.
 - `src/network/session.ts` — room creation/joining, PeerJS transport, validation, and disconnect handling.
 - `src/main.ts` / `src/style.css` — menus, keyboard/touch input, HUD, questions, and viewport fitting.
 - `public/sprites/` — optimized original generated artwork.
