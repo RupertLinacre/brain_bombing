@@ -87,6 +87,7 @@ export type Action =
   | { type: "move"; direction: Direction | null }
   | { type: "bomb" }
   | { type: "answer"; brain: number; choice: number }
+  | { type: "typed-answer"; brain: number; answer: string }
   | { type: "dismiss" };
 export const COLS = 15;
 export const ROWS = 11;

@@ -38,7 +38,7 @@ GitHub Pages serves that project branch at `https://rupertlinacre.com/brain_bomb
 - Choose **Circuit Garden** (winding paths), **Ember Works** (open cross lanes), or **Neon Arcade** (a roomy central plaza). Enable **New arena each round** to rotate through all three. The host chooses for online matches.
 - A shared **3-second countdown** introduces the arena and your colour. The round clock and all actions wait until it ends.
 - Move with **WASD** or **arrow keys**. Touch controls are also available on narrow screens.
-- Each player starts with **zero bombs**. Walk into one of your pink brains and answer its question by clicking a choice or pressing **1–4**. A correct answer earns exactly **one consumable bomb**.
+- Each player starts with **zero bombs**. Walk into one of your pink brains and answer its question by typing and pressing **Enter** on desktop, or tapping one of four choices on mobile. A correct answer earns exactly **one consumable bomb**.
 - Questions use `maths-game-problem-generator` **1.1.0**, including its `expression_short`, four answer choices, and correct answer. Reception through Year 6 are supported. Each player chooses their own year.
 - Wrong answers earn nothing and briefly lock further attempts. Move away or press **Escape** to dismiss a question. **The arena keeps running while you answer.**
 - Press **Space** or the bomb button to place a bomb. Its fuse lasts **3.6 seconds**. You can step off a new bomb, but cannot walk back through it.

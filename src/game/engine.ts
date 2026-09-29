@@ -1,3 +1,4 @@
+import { answersMatch } from "./answers";
 import { makeQuestion } from "./questions";
 import { makeArena, type ArenaId } from "./arenas";
 import { blastCells } from "./hazards";
@@ -183,19 +184,27 @@ export class Engine {
           .map((other) => other.id),
       });
       this.tell(id, "Bomb down. Find a corner!", "info");
-    } else if (action.type === "answer") {
+    } else if (action.type === "answer" || action.type === "typed-answer") {
       const b = this.activeBrain(id);
       if (
         !b ||
         b.id !== action.brain ||
-        !Number.isInteger(action.choice) ||
-        action.choice < 0 ||
-        action.choice > 3 ||
         b.retryAt > this.time ||
-        b.rejected.includes(action.choice)
+        (action.type === "answer"
+          ? !Number.isInteger(action.choice) ||
+            action.choice < 0 ||
+            action.choice > 3 ||
+            b.rejected.includes(action.choice)
+          : typeof action.answer !== "string" ||
+            !action.answer.trim() ||
+            action.answer.length > 100)
       )
         return;
-      if (b.question.correct === action.choice) {
+      if (
+        action.type === "answer"
+          ? b.question.correct === action.choice
+          : answersMatch(action.answer, b.question.choices[b.question.correct])
+      ) {
         p.bombs++;
         p.solved++;
         const upgraded =
@@ -211,7 +220,7 @@ export class Engine {
         );
         this.refillBrains();
       } else {
-        b.rejected.push(action.choice);
+        if (action.type === "answer") b.rejected.push(action.choice);
         b.retryAt = this.time + 0.8;
         this.tell(id, "Not quite. Try another answer.", "bad");
       }

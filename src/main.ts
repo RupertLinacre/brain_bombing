@@ -70,7 +70,7 @@ $("#app").innerHTML = `
     </section>
     <aside class="side-panel" id="side-panel"></aside>
   </div>
-  <footer class="control-bar"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><i> / </i><span class="arrow-keys">↑ ← ↓ →</span> <b>Move</b></span><span><kbd class="wide">SPACE</kbd> <b>Drop bomb</b></span><span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> <b>Answer</b></span></footer>
+  <footer class="control-bar"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><i> / </i><span class="arrow-keys">↑ ← ↓ →</span> <b>Move</b></span><span><kbd class="wide">SPACE</kbd> <b>Drop bomb</b></span><span class="desktop-answer-hint"><kbd>ENTER</kbd> <b>Submit answer</b></span><span class="mobile-answer-hint"><b>Tap an answer</b></span></footer>
   <div class="modal-backdrop" id="modal" hidden></div>
 </main>`;
 
@@ -512,6 +512,12 @@ function renderCountdown(): void {
   audio.play(count === "GO!" ? "start" : "click");
 }
 
+const touchAnswers = matchMedia("(pointer: coarse) and (hover: none)");
+touchAnswers.addEventListener("change", () => {
+  currentPanel = "";
+  renderSide();
+});
+
 function solvedProgress(): string {
   return `<div class="maths-solved" role="status" aria-live="polite" aria-atomic="true"><strong id="maths-solved-count"></strong><span>Maths problems solved<small>This round</small></span></div>`;
 }
@@ -521,7 +527,7 @@ function renderSide(): void {
   const p = view.players[local],
     brain = view.brains.find((b) => b.id === view.activeBrain);
   const panelKey = brain
-    ? `brain:${brain.id}:${brain.rejected.join(",")}`
+    ? `brain:${brain.id}:${touchAnswers.matches ? brain.rejected.join(",") : "typed"}`
     : "idle";
   if (currentPanel !== panelKey) {
     currentPanel = panelKey;
@@ -530,7 +536,7 @@ function renderSide(): void {
         `${solvedProgress()}<div class="question-top"><span class="reward">+1 <img src="${asset("bomb")}" alt="bomb"/></span></div>
         <div class="question-art"><img src="${asset("brain")}" alt="Pink brain"/></div>
         <h2 class="question-expression">${escapeHtml(brain.expression)}</h2>
-        <div class="answer-options">${brain.choices.map((choice, i) => `<button class="answer ${brain.rejected.includes(i) ? "rejected" : ""}" data-answer="${i}" ${brain.rejected.includes(i) ? "disabled" : ""}><kbd>${i + 1}</kbd><span>${escapeHtml(choice)}</span>${brain.rejected.includes(i) ? "<i>×</i>" : ""}</button>`).join("")}</div>
+        ${touchAnswers.matches ? `<div class="answer-options">${brain.choices.map((choice, i) => `<button class="answer ${brain.rejected.includes(i) ? "rejected" : ""}" data-answer="${i}" ${brain.rejected.includes(i) ? "disabled" : ""}><kbd>${i + 1}</kbd><span>${escapeHtml(choice)}</span>${brain.rejected.includes(i) ? "<i>×</i>" : ""}</button>`).join("")}</div>` : `<form id="typed-answer-form"><label for="typed-answer">Your answer</label><input id="typed-answer" type="text" maxlength="100" autocomplete="off" spellcheck="false" required/><button class="primary" type="submit">Submit <kbd>ENTER</kbd></button></form>`}
         <p class="live-note" id="question-live"><span></span> The arena is still live!</p><button class="text-button" id="dismiss-question">Move away or press <kbd>ESC</kbd></button>
         <div class="feedback" id="feedback" role="status"></div>`;
       document.querySelectorAll<HTMLButtonElement>("[data-answer]").forEach(
@@ -544,6 +550,15 @@ function renderSide(): void {
             $("#arena").focus();
           }),
       );
+      if (!touchAnswers.matches) {
+        const input = $<HTMLInputElement>("#typed-answer");
+        $("#typed-answer-form").onsubmit = (event) => {
+          event.preventDefault();
+          act({ type: "typed-answer", brain: brain.id, answer: input.value });
+          input.select();
+        };
+        if (!modalKind && !paused) input.focus({ preventScroll: true });
+      }
       $("#dismiss-question").onclick = () => {
         act({ type: "dismiss" });
         $("#arena").focus();
@@ -561,6 +576,8 @@ function renderSide(): void {
     }
   }
   if (!brain) {
+    if (document.activeElement === document.body)
+      $("#arena").focus({ preventScroll: true });
     $("#arsenal-count").textContent = String(p.bombs);
     $("#flame-stat").textContent = `${p.range} tiles`;
     $("#speed-stat").textContent = p.speed ? `+${p.speed}` : "Normal";
@@ -741,7 +758,7 @@ $("#help").onclick = () => {
   }
   showModal(
     "help",
-    `<span class="eyebrow">A QUICK FIELD GUIDE</span><h2>A good brain is your best weapon.</h2><div class="how-steps"><div><img src="${asset("brain")}" alt=""/><span><b>01 · Think</b>Walk into one of your pink brains. Click the answer or press 1–4. A correct answer earns one bomb. Wrong answers earn nothing; try again.</span></div><div><img src="${asset("bomb")}" alt=""/><span><b>02 · Drop</b>Use arrows or WASD to move. Press Space to place a bomb. Every bomb costs one from your arsenal and has a 3.6-second fuse.</span></div><div><img src="${asset("fire")}" alt=""/><span><b>03 · Dodge</b>You have three lives. A blast only hurts at the instant it explodes, through the centre of its lane. The fire afterward is safe. Steel and crates stop blasts.</span></div></div><p class="help-detail">Every 3 solved brains earns +1 tile of flame reach, up to 6. Crates can also reveal flame pickups or shoes for more speed. Amber floor outlines warn where a bomb is about to explode. The host chooses the arenas in online matches. Questions stay private; bomb counts and bombs are shared. First to 3 round wins takes the match.</p><p class="help-live">While answering, the arena keeps running. Move away or press Escape to close a question.${mode === "online" && screen === "game" ? " Your online match is live now." : ""}</p><button class="primary" id="help-close">Got it. Let's play ${icon("arrow")}</button>`,
+    `<span class="eyebrow">A QUICK FIELD GUIDE</span><h2>A good brain is your best weapon.</h2><div class="how-steps"><div><img src="${asset("brain")}" alt=""/><span><b>01 · Think</b>Walk into one of your pink brains. Type your answer and press Enter on desktop, or tap an answer on mobile. A correct answer earns one bomb. Wrong answers earn nothing; try again.</span></div><div><img src="${asset("bomb")}" alt=""/><span><b>02 · Drop</b>Use arrows or WASD to move. Press Space to place a bomb. Every bomb costs one from your arsenal and has a 3.6-second fuse.</span></div><div><img src="${asset("fire")}" alt=""/><span><b>03 · Dodge</b>You have three lives. A blast only hurts at the instant it explodes, through the centre of its lane. The fire afterward is safe. Steel and crates stop blasts.</span></div></div><p class="help-detail">Every 3 solved brains earns +1 tile of flame reach, up to 6. Crates can also reveal flame pickups or shoes for more speed. Amber floor outlines warn where a bomb is about to explode. The host chooses the arenas in online matches. Questions stay private; bomb counts and bombs are shared. First to 3 round wins takes the match.</p><p class="help-live">While answering, the arena keeps running. Move away or press Escape to close a question.${mode === "online" && screen === "game" ? " Your online match is live now." : ""}</p><button class="primary" id="help-close">Got it. Let's play ${icon("arrow")}</button>`,
   );
   $("#help-close").onclick = () => {
     paused = wasPaused;
@@ -841,9 +858,21 @@ window.addEventListener("keydown", (e) => {
     }
     return;
   }
+  if ((e.target as HTMLElement).id === "typed-answer") {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      act({ type: "dismiss" });
+      $("#arena").focus();
+      return;
+    }
+    if (e.key.startsWith("Arrow")) $("#arena").focus();
+    else return;
+  }
   if (
     screen !== "game" ||
-    ["INPUT", "SELECT", "TEXTAREA"].includes((e.target as HTMLElement).tagName)
+    ["INPUT", "SELECT", "TEXTAREA"].includes(
+      (document.activeElement as HTMLElement)?.tagName,
+    )
   )
     return;
   if (e.code === "Space" && (e.target as HTMLElement).closest("button")) return;
@@ -858,7 +887,11 @@ window.addEventListener("keydown", (e) => {
   } else if (e.code === "Space") {
     e.preventDefault();
     if (!e.repeat) act({ type: "bomb" });
-  } else if (/^[1-4]$/.test(e.key) && view.activeBrain !== null) {
+  } else if (
+    touchAnswers.matches &&
+    /^[1-4]$/.test(e.key) &&
+    view.activeBrain !== null
+  ) {
     e.preventDefault();
     if (!e.repeat)
       act({

@@ -11,7 +11,7 @@ export type NetworkEvent =
   | { kind: "rematch" }
   | { kind: "lost"; text: string };
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const PREFIX = "brain-bombs-2-v5-";
+const PREFIX = "brain-bombs-2-v6-";
 const validProfile = (p: unknown): p is Profile =>
   !!p &&
   typeof p === "object" &&
@@ -26,6 +26,13 @@ export function validAction(a: unknown): a is Action {
     return (
       v.direction === null ||
       ["up", "down", "left", "right"].includes(v.direction as string)
+    );
+  if (v.type === "typed-answer")
+    return (
+      Number.isInteger(v.brain) &&
+      typeof v.answer === "string" &&
+      v.answer.trim().length > 0 &&
+      v.answer.length <= 100
     );
   return (
     v.type === "answer" &&
