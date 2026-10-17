@@ -32,6 +32,7 @@ export class Bot {
     if (
       game.readyIn > 0 ||
       game.time < this.nextThink ||
+      game.movement[1].snapshot().moving ||
       game.phase === "ended"
     )
       return;
@@ -44,14 +45,14 @@ export class Bot {
       const escape = this.routes(game, danger).find(
         (node) => node.path.length && !nextHazard(danger, node.cell, game.time),
       );
-      game.act(1, { type: "move", direction: escape?.path[0] ?? null });
+      game.act(1, { type: "step", direction: escape?.path[0] ?? null });
       this.target = "";
       this.solving = null;
       return;
     }
     const brain = game.activeBrain(1);
     if (brain) {
-      game.act(1, { type: "move", direction: null });
+      game.act(1, { type: "step", direction: null });
       if (this.solving !== brain.id) {
         this.solving = brain.id;
         const answerTime =
@@ -132,7 +133,7 @@ export class Bot {
     for (const candidate of candidates) {
       if (candidate.path.length) {
         this.target = candidate.target;
-        game.act(1, { type: "move", direction: candidate.path[0] });
+        game.act(1, { type: "step", direction: candidate.path[0] });
         return;
       }
       const proposed: Bomb = {
@@ -150,20 +151,21 @@ export class Bot {
       );
       if (escape) {
         game.act(1, { type: "bomb" });
-        game.act(1, { type: "move", direction: escape.path[0] });
+        game.act(1, { type: "step", direction: escape.path[0] });
         this.target = "";
         return;
       }
     }
-    game.act(1, { type: "move", direction: null });
+    game.act(1, { type: "step", direction: null });
   }
 
   private routes(game: Engine, danger: HazardMap): Route[] {
     const start = game.players[1],
       seen = new Set([key(start)]);
     const queue: Route[] = [{ cell: start, path: [] }];
-    // Movement is quantized to simulation ticks, with time for the next bot decision.
-    const stride = Math.ceil((0.17 - start.speed * 0.018) / 0.05) * 0.05;
+    // Leave time for the next AI decision after reaching a tile centre.
+    const stride =
+      0.17 - start.speed * 0.018 + (this.pace === "starter" ? 0.11 : 0.03);
     for (let i = 0; i < queue.length; i++) {
       const node = queue[i];
       for (const [dir, delta] of Object.entries(DIRECTIONS)) {

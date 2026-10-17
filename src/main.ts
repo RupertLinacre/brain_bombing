@@ -1,5 +1,7 @@
 import "./style.css";
 import { Engine } from "./game/engine";
+import { keyDirections } from "./game/movement";
+import { MovementPrediction, DriveByAnswer } from "./game/prediction";
 import { ARENAS, arenaInfo, makeArena, type ArenaId } from "./game/arenas";
 import { predictHazards, nextHazard } from "./game/hazards";
 import { Bot, type BotPace } from "./game/bot";
@@ -11,7 +13,6 @@ import {
   YEARS,
   yearLabel,
   type Action,
-  type Direction,
   type PlayerId,
   type Profile,
   type View,
@@ -87,14 +88,16 @@ let wins = [0, 0];
 let countedEnd = false;
 let awaitingRematch = false;
 let resultTimer: ReturnType<typeof setTimeout> | undefined;
-let lastActive: number | null = null;
 let currentPanel = "";
 let modalKind = "";
 let previousFocus: HTMLElement | null = null;
 let profiles: [Profile, Profile];
-let held: Direction[] = [];
+const held = new Set<string>();
+const prediction = new MovementPrediction();
+const answer = new DriveByAnswer();
+let inputSequence = 0;
+let waitingForGo = false;
 let lastSent = 0;
-let lastDirection: Direction | null = null;
 let lastCountdown = "";
 let awaitingView = false;
 const audio = new GameAudio();
@@ -182,7 +185,7 @@ function showMenu(): void {
   bot = undefined;
   paused = false;
   lost = false;
-  held = [];
+  held.clear();
   local = 0;
   wins = [0, 0];
   round = 1;
@@ -334,8 +337,11 @@ function startCpu(): void {
 function startRound(): void {
   clearTimeout(resultTimer);
   closeModal();
-  held = [];
-  lastDirection = null;
+  held.clear();
+  prediction.reset();
+  answer.reset();
+  inputSequence = 0;
+  lastStep = performance.now();
   lastSent = 0;
   if (mode === "cpu" || session.role === "host") {
     const first = ARENAS.findIndex((arena) => arena.id === selectedArena);
@@ -345,6 +351,7 @@ function startRound(): void {
   }
   bot = mode === "cpu" ? new Bot(botPace) : undefined;
   if (engine) view = engine.view(local);
+  waitingForGo = true;
   awaitingView = !engine;
   screen = "game";
   paused = false;
@@ -352,7 +359,6 @@ function startRound(): void {
   countedEnd = false;
   awaitingRematch = false;
   currentPanel = "";
-  lastActive = null;
   feedbackTracker.reset(engine ? view : undefined);
   renderer.reset();
   lastCountdown = "";
@@ -414,10 +420,15 @@ function onNetwork(event: NetworkEvent): void {
     if (!lost && screen === "game") {
       awaitingView = false;
       view = event.view;
+      prediction.receive(view, local, performance.now());
+      presentGame(performance.now());
       afterView();
     }
   }
-  if (event.kind === "action" && !lost) engine?.act(1, event.action);
+  if (event.kind === "action" && !lost) {
+    advanceGame(performance.now());
+    engine?.act(1, event.action);
+  }
   if (event.kind === "rematch" && view.phase === "ended") {
     awaitingRematch = true;
     const note = document.querySelector("#rematch-status");
@@ -427,9 +438,9 @@ function onNetwork(event: NetworkEvent): void {
     lost = true;
     clearTimeout(resultTimer);
     audio.setActive(false);
-    held = [];
+    held.clear();
     $("#arena-status").textContent = "DISCONNECTED";
-    engine?.act(0, { type: "move", direction: null });
+    engine?.act(0, { type: "release", sequence: ++inputSequence });
     if (screen === "game") {
       showModal(
         "lost",
@@ -443,10 +454,42 @@ function onNetwork(event: NetworkEvent): void {
   }
 }
 
+function presentGame(now: number): void {
+  if (screen !== "game" || awaitingView) return;
+  if (mode === "online" && session.role === "guest")
+    view = prediction.present(now) ?? view;
+  view = { ...view, activeBrain: answer.update(view, local) };
+}
+
 function act(action: Action): void {
   if (screen !== "game" || paused || lost || view.phase === "ended") return;
-  if (mode === "online" && session.role === "guest") session.sendAction(action);
-  else engine?.act(local, action);
+  const now = performance.now();
+  advanceGame(now);
+  if (mode === "online" && session.role === "guest") {
+    prediction.input(action, now);
+    session.sendAction(action);
+  } else {
+    engine?.act(local, action);
+    if (engine) view = engine.view(local);
+  }
+  presentGame(now);
+  afterView();
+}
+function releaseInputs(): void {
+  held.clear();
+  act({ type: "release", sequence: ++inputSequence });
+}
+function press(code: string, down: boolean): void {
+  if (down ? held.has(code) : !held.has(code)) return;
+  if (down) held.add(code);
+  else held.delete(code);
+  act({ type: "input", code, down, sequence: ++inputSequence });
+}
+function dismissQuestion(): void {
+  const brain = answer.brain;
+  answer.dismiss();
+  if (brain !== null) act({ type: "dismiss", brain });
+  $("#arena").focus();
 }
 
 function renderHud(): void {
@@ -553,6 +596,7 @@ function renderSide(): void {
       if (!touchAnswers.matches) {
         const input = $<HTMLInputElement>("#typed-answer");
         const submitAnswer = () => {
+          answer.text = input.value;
           if (input.value.trim())
             act({ type: "typed-answer", brain: brain.id, answer: input.value });
         };
@@ -564,11 +608,10 @@ function renderSide(): void {
           event.preventDefault();
           submitAnswer();
         };
-        if (!modalKind && !paused) input.focus({ preventScroll: true });
+        input.value = answer.text;
       }
       $("#dismiss-question").onclick = () => {
-        act({ type: "dismiss" });
-        $("#arena").focus();
+        dismissQuestion();
       };
     } else {
       $("#side-panel").innerHTML = `${solvedProgress()}
@@ -581,6 +624,10 @@ function renderSide(): void {
         $("#arena").focus();
       };
     }
+  }
+  if (brain && !touchAnswers.matches) {
+    const input = $<HTMLInputElement>("#typed-answer");
+    if (input.value !== answer.text) input.value = answer.text;
   }
   if (!brain) {
     if (document.activeElement === document.body)
@@ -615,14 +662,6 @@ function renderSide(): void {
 }
 
 function afterView(): void {
-  if (view.activeBrain !== lastActive) {
-    if (view.activeBrain !== null) {
-      held = [];
-      lastDirection = null;
-      act({ type: "move", direction: null });
-    }
-    lastActive = view.activeBrain;
-  }
   const events = feedbackTracker.consume(view, local);
   if (!document.hidden) renderer.react(events, view, local);
   audio.react(events, view, local);
@@ -656,7 +695,7 @@ function afterView(): void {
   }
   if (view.phase === "ended" && !countedEnd) {
     countedEnd = true;
-    held = [];
+    held.clear();
     if (view.winner !== null) wins[view.winner]++;
     audio.setActive(false);
     audio.play(view.winner === local ? "win" : "lose");
@@ -733,8 +772,7 @@ function showError(message: string): void {
 
 function openPause(): void {
   if (screen !== "game" || view.phase === "ended" || lost) return;
-  held = [];
-  act({ type: "move", direction: null });
+  releaseInputs();
   paused = mode === "cpu";
   if (paused) audio.setActive(false);
   showModal(
@@ -756,8 +794,7 @@ $("#brand").onclick = () => {
 };
 $("#help").onclick = () => {
   if (modalKind === "result" || modalKind === "lost") return;
-  held = [];
-  act({ type: "move", direction: null });
+  releaseInputs();
   const wasPaused = paused;
   if (mode === "cpu" && screen === "game") {
     paused = true;
@@ -828,16 +865,6 @@ $("#fullscreen").onclick = async () => {
   }
 };
 
-const directionKeys: Record<string, Direction> = {
-  ArrowUp: "up",
-  w: "up",
-  ArrowDown: "down",
-  s: "down",
-  ArrowLeft: "left",
-  a: "left",
-  ArrowRight: "right",
-  d: "right",
-};
 window.addEventListener("keydown", (e) => {
   if (!$("#modal").hidden) {
     if (e.key === "Tab") {
@@ -865,68 +892,66 @@ window.addEventListener("keydown", (e) => {
     }
     return;
   }
-  if ((e.target as HTMLElement).id === "typed-answer") {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      act({ type: "dismiss" });
-      $("#arena").focus();
-      return;
-    }
-    if (e.key.startsWith("Arrow")) $("#arena").focus();
-    else return;
-  }
+  const typing = (e.target as HTMLElement).id === "typed-answer";
   if (
     screen !== "game" ||
-    ["INPUT", "SELECT", "TEXTAREA"].includes(
-      (document.activeElement as HTMLElement)?.tagName,
-    )
+    (!typing &&
+      ["INPUT", "SELECT", "TEXTAREA"].includes(
+        (document.activeElement as HTMLElement)?.tagName,
+      ))
   )
     return;
-  if (e.code === "Space" && (e.target as HTMLElement).closest("button")) return;
-  const dir = directionKeys[e.key] || directionKeys[e.key.toLowerCase()];
-  if (dir) {
+  if (e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return;
+  advanceGame(performance.now());
+  presentGame(performance.now());
+  const direction = keyDirections[e.code];
+  if (direction && (!typing || e.code.startsWith("Arrow"))) {
     e.preventDefault();
-    if (!e.repeat) {
-      held = held.filter((d) => d !== dir);
-      held.push(dir);
-      act({ type: "move", direction: dir });
-    }
-  } else if (e.code === "Space") {
+    if (!e.repeat) press(e.code, true);
+  } else if (e.code === "Space" && !typing) {
+    if ((e.target as HTMLElement).closest("button")) return;
     e.preventDefault();
     if (!e.repeat) act({ type: "bomb" });
+  } else if (e.key === "Escape") {
+    e.preventDefault();
+    if (answer.brain !== null) {
+      if (answer.text) {
+        answer.text = "";
+        renderSide();
+      } else dismissQuestion();
+    } else openPause();
   } else if (
     touchAnswers.matches &&
     /^[1-4]$/.test(e.key) &&
-    view.activeBrain !== null
+    answer.brain !== null
   ) {
     e.preventDefault();
     if (!e.repeat)
-      act({
-        type: "answer",
-        brain: view.activeBrain,
-        choice: Number(e.key) - 1,
-      });
-  } else if (e.key === "Escape") {
-    if (view.activeBrain !== null) act({ type: "dismiss" });
-    else openPause();
+      act({ type: "answer", brain: answer.brain, choice: Number(e.key) - 1 });
+  } else if (!typing && !touchAnswers.matches && answer.brain !== null) {
+    if (e.key.length === 1 || e.key === "Backspace" || e.key === "Delete") {
+      e.preventDefault();
+      if (e.repeat) return;
+      if (e.key === "Backspace") answer.text = answer.text.slice(0, -1);
+      else if (e.key === "Delete") answer.text = "";
+      else answer.text = (answer.text + e.key).slice(0, 100);
+      if (answer.text.trim())
+        act({ type: "typed-answer", brain: answer.brain, answer: answer.text });
+      renderSide();
+    }
   }
 });
 window.addEventListener("keyup", (e) => {
-  const dir = directionKeys[e.key] || directionKeys[e.key.toLowerCase()];
-  if (dir) {
-    held = held.filter((d) => d !== dir);
-    act({ type: "move", direction: held.at(-1) ?? null });
+  if (keyDirections[e.code] && held.has(e.code)) {
+    e.preventDefault();
+    press(e.code, false);
   }
 });
-window.addEventListener("blur", () => {
-  held = [];
-  act({ type: "move", direction: null });
-});
+window.addEventListener("blur", releaseInputs);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     audio.setActive(false);
-    held = [];
-    act({ type: "move", direction: null });
+    releaseInputs();
     if (
       mode === "cpu" &&
       screen === "game" &&
@@ -939,26 +964,22 @@ document.addEventListener("visibilitychange", () => {
 $("#arena").addEventListener("pointerdown", () => $("#arena").focus());
 $("#touch-bomb").onclick = () => act({ type: "bomb" });
 document.querySelectorAll<HTMLButtonElement>("[data-dir]").forEach((button) => {
+  const code = `Touch${button.dataset.dir![0].toUpperCase()}${button.dataset.dir!.slice(1)}`;
   button.onpointerdown = (e) => {
     e.preventDefault();
     button.setPointerCapture(e.pointerId);
-    held = [button.dataset.dir as Direction];
-    act({ type: "move", direction: held[0] });
+    press(code, true);
   };
-  const release = () => {
-    held = [];
-    act({ type: "move", direction: null });
-  };
+  const release = () => press(code, false);
   button.onpointerup = release;
   button.onpointercancel = release;
   button.onlostpointercapture = release;
 });
 
-let lastStep = performance.now(),
-  accumulator = 0;
-setInterval(() => {
-  const now = performance.now(),
-    elapsed = Math.min(0.25, (now - lastStep) / 1000);
+let lastStep = performance.now();
+function advanceGame(now: number): void {
+  now = Math.max(now, lastStep);
+  let elapsed = Math.min(0.25, Math.max(0, (now - lastStep) / 1000));
   lastStep = now;
   if (
     screen !== "game" ||
@@ -966,26 +987,46 @@ setInterval(() => {
     lost ||
     !engine ||
     (mode === "online" && session.role !== "host")
-  ) {
-    accumulator = 0;
+  )
     return;
-  }
-  accumulator += elapsed;
-  let changed = false;
-  while (accumulator >= 0.05) {
+  while (elapsed > 1e-7) {
+    const dt = Math.min(0.05, elapsed);
     bot?.update(engine);
-    engine.step();
-    accumulator -= 0.05;
-    changed = true;
+    engine.step(dt);
+    elapsed -= dt;
   }
-  if (changed) {
-    view = engine.view(local);
-    afterView();
-    if (mode === "online") session.sendView(engine.view(1));
-  }
-}, 25);
-
+  view = engine.view(local);
+  presentGame(now);
+  afterView();
+}
+// Keep authoritative combat alive if an online tab is in the background.
+setInterval(() => advanceGame(performance.now()), 25);
+setInterval(() => {
+  if (
+    screen === "game" &&
+    mode === "online" &&
+    session.role === "host" &&
+    !lost &&
+    engine
+  )
+    session.sendView(engine.view(1));
+}, 50);
 function frame(now: number): void {
+  advanceGame(now);
+  if (screen === "game" && mode === "online" && session.role === "guest") {
+    presentGame(now);
+    afterView();
+  }
+  if (
+    screen === "game" &&
+    waitingForGo &&
+    !awaitingView &&
+    view.readyIn === 0
+  ) {
+    waitingForGo = false;
+    for (const code of held)
+      act({ type: "input", code, down: true, sequence: ++inputSequence });
+  }
   audio.setActive(
     screen === "game" &&
       !paused &&
@@ -995,13 +1036,16 @@ function frame(now: number): void {
       view.readyIn === 0 &&
       !document.hidden,
   );
-  if (screen === "game" && !paused && !lost && view.phase === "playing") {
-    const direction = held.at(-1) ?? null;
-    if (direction !== lastDirection || now - lastSent > 150) {
-      act({ type: "move", direction });
-      lastDirection = direction;
-      lastSent = now;
-    }
+  if (
+    screen === "game" &&
+    !paused &&
+    !lost &&
+    view.phase === "playing" &&
+    held.size &&
+    now - lastSent > 200
+  ) {
+    act({ type: "keepalive" });
+    lastSent = now;
   }
   renderer.draw(view, local, now, screen !== "game");
   requestAnimationFrame(frame);

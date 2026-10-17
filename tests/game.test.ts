@@ -207,9 +207,9 @@ describe("arena combat", () => {
       return g;
     };
     // About 30% out of the lane: the player's centre is still caught.
-    expect(scenario(0.1).players[0].lives).toBe(2);
+    expect(scenario(0.05).players[0].lives).toBe(2);
     // More than halfway into the next tile: the player's centre has cleared it.
-    expect(scenario(0.15).players[0].lives).toBe(3);
+    expect(scenario(0.1).players[0].lives).toBe(3);
   });
   it("lets a player leave a new bomb but blocks returning through it", () => {
     const g = game();
@@ -219,6 +219,9 @@ describe("arena combat", () => {
     g.act(0, { type: "move", direction: "right" });
     g.step();
     expect(g.players[0].x).toBe(2);
+    // A player can still reverse while they overlap the bomb's tile.
+    expect(g.bombs[0].pass).toContain(0);
+    advance(g, 0.1);
     expect(g.bombs[0].pass).not.toContain(0);
     g.act(0, { type: "move", direction: "left" });
     advance(g, 0.25);

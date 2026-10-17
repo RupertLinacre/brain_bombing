@@ -309,18 +309,8 @@ export class Renderer {
       const pos = this.positions[p.id],
         x = (p.visualX + 0.5) * TILE,
         y = (p.visualY + 0.5) * TILE;
-      if (
-        Math.abs(pos.x - x) + Math.abs(pos.y - y) > TILE * 3 ||
-        preview ||
-        view.readyIn > 0
-      ) {
-        pos.x = x;
-        pos.y = y;
-      }
-      const moving = Math.abs(pos.x - x) + Math.abs(pos.y - y) > 2;
-      const lerp = Math.min(1, dt * 24);
-      pos.x += (x - pos.x) * lerp;
-      pos.y += (y - pos.y) * lerp;
+      const moving = Math.abs(pos.x-x)+Math.abs(pos.y-y)>0.1;
+      pos.x=x; pos.y=y;
       ctx.globalAlpha = p.alive ? 1 : 0.23;
       const shielded = p.alive && p.invulnerableUntil > view.time;
       if (shielded) {

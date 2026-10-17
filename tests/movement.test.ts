@@ -1,45 +1,34 @@
 import { describe, expect, it } from "vitest";
 import {
-  CurrentControls,
-  PrecisionControls,
-  makeMap,
+  GridMovement,
   STEP_MS,
-  type Controller,
   type MovementEvent,
-} from "../src/playground/movement";
-import { scenarios } from "../src/playground/scenarios";
-
-function run(c: Controller, scenario: string): void {
-  let index = 0;
-  const { inputs, duration } = scenarios[scenario];
-  for (let at = 0; at <= duration; at += 10) {
-    while (index < inputs.length && inputs[index].at <= at) {
-      const input = inputs[index++];
-      if (input.down) c.down(input.code, input.at, input.repeat);
-      else c.up(input.code, input.at);
-    }
-    c.frame(at);
+  type Emit,
+} from "../src/game/movement";
+const makeMap = (layout: "open" | "pillars") =>
+  Array.from({ length: 5 }, (_, y) =>
+    Array.from({ length: 5 }, (_, x) =>
+      layout === "pillars" && x % 2 === 1 && y % 2 === 1 ? 1 : 0,
+    ),
+  );
+class PrecisionControls extends GridMovement {
+  constructor(map: number[][], emit?: Emit, bufferMs = 220) {
+    super(
+      (p) => map[p.y]?.[p.x] === 0,
+      { x: 2, y: 2 },
+      undefined,
+      undefined,
+      emit,
+      bufferMs,
+    );
   }
 }
-
-describe("controls playground comparisons", () => {
-  it("exposes the current engine losing a second tap inside a simulation tick", () => {
-    const current = new CurrentControls(makeMap("open")),
-      precision = new PrecisionControls(makeMap("open"));
-    run(current, "double");
-    run(precision, "double");
-    expect(current.snapshot().cell).toEqual({ x: 3, y: 2 });
-    expect(precision.snapshot().cell).toEqual({ x: 4, y: 2 });
-  });
-  it("preserves a released turn instead of replacing it when the held key resumes", () => {
-    const current = new CurrentControls(makeMap("open")),
-      precision = new PrecisionControls(makeMap("open"));
-    run(current, "corner");
-    run(precision, "corner");
-    expect(current.snapshot().cell).toEqual({ x: 4, y: 2 });
-    expect(precision.snapshot().cell).toEqual({ x: 4, y: 1 });
-  });
-});
+const cornerInputs = [
+  { at: 10, code: "ArrowRight", down: true },
+  { at: 255, code: "ArrowUp", down: true },
+  { at: 275, code: "ArrowUp", down: false },
+  { at: 300, code: "ArrowRight", down: false },
+];
 
 describe("timing-focused movement", () => {
   it("starts on keydown and reverses mid-tile without jumping or changing speed", () => {
@@ -155,7 +144,7 @@ describe("timing-focused movement", () => {
     function play(frameMs: number) {
       const c = new PrecisionControls(makeMap("open"));
       let i = 0;
-      const inputs = scenarios.corner.inputs;
+      const inputs = cornerInputs;
       for (let at = 0; at < 1000; at += frameMs) {
         while (i < inputs.length && inputs[i].at <= at) {
           const e = inputs[i++];

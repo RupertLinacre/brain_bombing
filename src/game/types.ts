@@ -1,4 +1,5 @@
 import type { ArenaId } from "./arenas";
+import type { MovementState } from "./movement";
 
 export type PlayerId = 0 | 1;
 export type Direction = "up" | "down" | "left" | "right";
@@ -75,6 +76,8 @@ export type View = {
   winner: PlayerId | null;
   map: number[][];
   players: Player[];
+  movement: MovementState[];
+  inputSequence: number[];
   bombs: Bomb[];
   flames: Flame[];
   explosions: Explosion[];
@@ -85,10 +88,14 @@ export type View = {
 };
 export type Action =
   | { type: "move"; direction: Direction | null }
+  | { type: "step"; direction: Direction | null }
+  | { type: "input"; code: string; down: boolean; sequence: number }
+  | { type: "release"; sequence: number }
+  | { type: "keepalive" }
   | { type: "bomb" }
   | { type: "answer"; brain: number; choice: number }
   | { type: "typed-answer"; brain: number; answer: string }
-  | { type: "dismiss" };
+  | { type: "dismiss"; brain?: number };
 export const COLS = 15;
 export const ROWS = 11;
 export const FUSE_SECONDS = 3.6;

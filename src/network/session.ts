@@ -1,5 +1,6 @@
 import Peer, { type DataConnection } from "peerjs";
 import { YEARS, type Action, type Profile, type View } from "../game/types";
+import { keyDirections } from "../game/movement";
 
 export type NetworkEvent =
   | { kind: "status"; text: string }
@@ -11,7 +12,7 @@ export type NetworkEvent =
   | { kind: "rematch" }
   | { kind: "lost"; text: string };
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const PREFIX = "brain-bombs-2-v7-";
+const PREFIX = "brain-bombs-2-v8-";
 const validProfile = (p: unknown): p is Profile =>
   !!p &&
   typeof p === "object" &&
@@ -21,7 +22,19 @@ const validProfile = (p: unknown): p is Profile =>
 export function validAction(a: unknown): a is Action {
   if (!a || typeof a !== "object") return false;
   const v = a as Record<string, unknown>;
-  if (v.type === "bomb" || v.type === "dismiss") return true;
+  if (v.type === "bomb") return true;
+  if (v.type === "dismiss")
+    return v.brain === undefined || Number.isInteger(v.brain);
+  if (v.type === "keepalive") return true;
+  if (v.type === "input" || v.type === "release")
+    return (
+      Number.isSafeInteger(v.sequence) &&
+      Number(v.sequence) > 0 &&
+      (v.type === "release" ||
+        (typeof v.code === "string" &&
+          Object.hasOwn(keyDirections, v.code) &&
+          typeof v.down === "boolean"))
+    );
   if (v.type === "move")
     return (
       v.direction === null ||

@@ -23,11 +23,11 @@ npm run preview  # Serve the production build
 
 The production `dist/` folder can be served by any static web host. Relative asset paths support deployment in a subdirectory. No application server is required.
 
-## Controls playground
+## Responsive movement and answering
 
-Open `/controls.html` on the development server to compare the current controls with a timing-focused prototype on a 5×5 board. Both receive identical keyboard input; switch the watched mode or show the other as a ghost. The page includes live held keys, recent events, pending taps, timing measurements, reproducible scenarios, replay of your own input, and JSON export. The prototype is isolated from the main game. See [the controls notes](docs/CONTROLS_PLAYGROUND.md) for the input rules and measurement limits.
+Movement starts on keydown. Two rapid taps remain two steps; up to two taps can wait for 220 ms. Turns happen at tile centres, and pressing the opposite direction reverses immediately without a position jump. Released taps stay intentional; focus loss or opening a menu clears held keys and pending steps. There is no extra renderer smoothing. The development playground has been removed now that these controls are in the game.
 
-The **Drive-by questions** drill starts with crates to steer around and three randomly placed maths questions from the game's question generator. Each solve instantly spawns a replacement on another empty, reachable tile. Hold a movement key and type while any part of your outlined footprint overlaps the question's tile. Correct answers accept automatically without stopping, and the solved counter keeps climbing. Try the **Drive-by answer** replay, or practise manually. **R** starts a fresh random set; recordings retain their question bank and placement seed.
+On desktop, keep moving and type while any part of your player overlaps a brain's tile. Correct answers accept without Enter or changing focus. Unfinished input disappears as soon as you leave that square completely. Backspace edits and Escape clears; Escape with an empty answer dismisses the question. Clicking the answer field also allows word answers and units; use arrow keys to move while that field is focused. Mobile keeps four tappable choices.
 
 ## Deploy to GitHub Pages
 
@@ -46,7 +46,7 @@ GitHub Pages serves that project branch at `https://rupertlinacre.com/brain_bomb
 - Move with **WASD** or **arrow keys**. Touch controls are also available on narrow screens.
 - Each player starts with **zero bombs**. Walk into one of your pink brains and answer its question by typing on desktop (correct answers are accepted automatically), or tapping one of four choices on mobile. A correct answer earns exactly **one consumable bomb**.
 - Questions use `maths-game-problem-generator` **1.1.0**, including its `expression_short`, four answer choices, and correct answer. Reception through Year 6 are supported. Each player chooses their own year.
-- Wrong multiple-choice answers earn nothing and briefly lock further attempts. Incomplete or incorrect typed answers let you keep typing without a penalty. Move away or press **Escape** to dismiss a question. **The arena keeps running while you answer.**
+- Wrong multiple-choice answers earn nothing and briefly lock further attempts. Incomplete or incorrect typed answers let you keep typing without a penalty. Leaving the brain tile clears unfinished typing. **Escape** clears a typed answer, then dismisses the question if pressed again. **The arena keeps running while you answer.**
 - Press **Space** or the bomb button to place a bomb. Its fuse lasts **3.6 seconds**. You can step off a new bomb, but cannot walk back through it.
 - Each player has **three lives**. A hit removes one life, moves the player to a safe open tile near their starting corner, and gives them a 1.2-second respawn shield. The round ends when a player loses their final life.
 - Blasts travel in a **cross**, stop at steel blocks, destroy the first crate in their path, and trigger other bombs. The damaging part is a narrow strip through the centre of each lane, checked only at the instant of explosion. If your centre has mostly cleared the lane, you survive. The animated flame and smoke that remain afterward are visual effects and are safe to walk through.
@@ -68,7 +68,7 @@ The effects respect the browser's reduced-motion preference. Particle counts and
 
 One player chooses **Create room** and shares the four-character code. The other chooses **Join a friend** and enters it. The host starts the match. Both computers must open this game, either from the same deployed URL or from the development server's printed LAN address.
 
-Like Arithmetic Annihilation, transport uses **PeerJS** signalling and a **WebRTC data connection**. The host runs the authoritative simulation at 20 ticks/second, validates guest inputs, and sends a separate view to each player. A view contains both players and all public combat state, but **only that viewer's brains and questions**; it never contains correct-answer indices. Each device displays only its own questions. This is a friendly peer-hosted game, not a server-backed anti-cheat system.
+Like Arithmetic Annihilation, transport uses **PeerJS** signalling and a **WebRTC data connection**. The host advances the authoritative simulation with elapsed time, validates guest inputs, and sends a separate view to each player 20 times per second. Physical key events and their sequence numbers preserve short taps and independent WASD/arrow keys. The guest predicts its own movement immediately, then reconciles with acknowledged host movement; combat and maths rewards stay authoritative. A view contains both players and all public combat state, but **only that viewer's brains and questions**; it never contains correct-answer indices. Each device displays only its own questions. This is a friendly peer-hosted game, not a server-backed anti-cheat system.
 
 Rematches stay in the same room. The guest can signal readiness; the host starts the next round. Disconnects stop the local match and show a return-to-menu message instead of leaving a frozen game without explanation. Online matches continue while menus are open. Computer matches can be paused.
 
@@ -81,6 +81,7 @@ Professor Byte walks to its own brains, spends time answering, and earns the sam
 ## Project layout
 
 - `src/game/engine.ts` — authoritative grid simulation, bombs, power-ups, private brains, and filtered snapshots.
+- `src/game/movement.ts` / `src/game/prediction.ts` — timestamped grid movement, peer movement prediction, and drive-by answer state.
 - `src/game/arenas.ts` — three symmetric arena layouts and their visual themes.
 - `src/game/hazards.ts` — shared blast geometry and public hazard forecasting.
 - `src/game/bot.ts` — computer pathfinding and bomb escape planning.

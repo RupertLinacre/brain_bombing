@@ -1,4 +1,5 @@
-import { answersMatch } from "./answers";
+import { answersMatch, overlapFraction } from "./answers";
+import { GridMovement } from "./movement";
 import { makeQuestion } from "./questions";
 import { makeArena, type ArenaId } from "./arenas";
 import { blastCells } from "./hazards";
@@ -19,7 +20,6 @@ import {
   type Action,
   type Bomb,
   type Brain,
-  type Direction,
   type Feedback,
   type Flame,
   type Explosion,
@@ -33,17 +33,7 @@ import {
   type YearLevel,
 } from "./types";
 
-type Control = {
-  pending: Direction | null;
-  direction: Direction | null;
-  until: number;
-  nextMove: number;
-  dismissed: number | null;
-  fromX: number;
-  fromY: number;
-  moveStarted: number;
-  moveDuration: number;
-};
+type Control = { until: number; dismissed: number | null; sequence: number };
 type QuestionFactory = (year: YearLevel) => Question;
 export class Engine {
   readyIn: number;
@@ -58,17 +48,12 @@ export class Engine {
   explosions: Explosion[] = [];
   pickups: Pickup[] = [];
   brains: Brain[] = [];
-  controls: Control[] = [0, 1].map((id) => ({
-    pending: null,
-    direction: null,
+  controls: Control[] = [0, 1].map(() => ({
     until: 0,
-    nextMove: 0,
     dismissed: null,
-    fromX: id ? COLS - 2 : 1,
-    fromY: id ? ROWS - 2 : 1,
-    moveStarted: 0,
-    moveDuration: 0,
+    sequence: 0,
   }));
+  readonly movement: GridMovement[];
   feedback: Feedback[] = [0, 1].map(() => ({
     text: "Find a pink brain to earn your first bomb.",
     kind: "info",
@@ -104,6 +89,15 @@ export class Engine {
       solved: 0,
       facing: id ? "left" : "right",
     }));
+    this.movement = this.players.map(
+      (p) =>
+        new GridMovement(
+          (point) => this.walkable(point, p.id),
+          p,
+          () => 170 - p.speed * 18,
+          (point) => this.collectPickup(p.id, point),
+        ),
+    );
     this.refillBrains();
   }
 
@@ -144,51 +138,93 @@ export class Engine {
   }
 
   activeBrain(id: PlayerId): Brain | undefined {
-    return this.brains.find(
-      (b) =>
-        b.owner === id &&
-        same(b, this.players[id]) &&
-        b.id !== this.controls[id].dismissed,
-    );
+    const p = this.playerPosition(id);
+    if (!this.players[id].alive) return;
+    return this.brains
+      .filter(
+        (b) =>
+          b.owner === id &&
+          b.id !== this.controls[id].dismissed &&
+          overlapFraction({ x: p.visualX, y: p.visualY }, b) > 0,
+      )
+      .sort(
+        (a, b) =>
+          overlapFraction({ x: p.visualX, y: p.visualY }, b) -
+          overlapFraction({ x: p.visualX, y: p.visualY }, a),
+      )[0];
   }
 
   act(id: PlayerId, action: Action): void {
     const p = this.players[id],
       c = this.controls[id];
     if (this.phase !== "playing" || this.readyIn > 0 || !p.alive) return;
-    if (action.type === "move") {
-      // Remember a short tap even if keyup arrives before the next simulation tick.
-      if (action.direction && c.direction !== action.direction)
-        c.pending = action.direction;
-      c.direction = action.direction;
-      c.until = this.time + 0.5;
+    this.syncMovement(id);
+    const movement = this.movement[id],
+      at = this.time * 1000;
+    if (action.type === "input" || action.type === "release") {
+      if (action.sequence <= c.sequence) return;
+      c.sequence = action.sequence;
+      c.until = this.time + 0.75;
+      if (action.type === "release") movement.release(at);
+      else if (action.down) movement.down(action.code, at);
+      else movement.up(action.code, at);
+      this.syncMovement(id, false);
+    } else if (action.type === "keepalive") {
+      c.until = this.time + 0.75;
+    } else if (action.type === "move") {
+      movement.steer(action.direction, at);
+      c.until = this.time + 0.75;
+      this.syncMovement(id, false);
+    } else if (action.type === "step") {
+      movement.tap(action.direction, at);
+      this.syncMovement(id, false);
     } else if (action.type === "dismiss") {
-      c.dismissed = this.activeBrain(id)?.id ?? null;
+      const b =
+        action.brain === undefined
+          ? this.activeBrain(id)
+          : this.brains.find(
+              (b) =>
+                b.id === action.brain &&
+                b.owner === id &&
+                overlapFraction({ x: p.visualX, y: p.visualY }, b) > 0,
+            );
+      c.dismissed = b?.id ?? null;
     } else if (action.type === "bomb") {
-      if (this.activeBrain(id)) return;
       if (p.bombs < 1) {
         this.tell(id, "Solve a brain to earn a bomb first.", "info");
         return;
       }
-      if (this.bombs.some((b) => same(b, p))) return;
+      const tile = { x: Math.round(p.visualX), y: Math.round(p.visualY) };
+      if (
+        this.bombs.some((b) => same(b, tile)) ||
+        this.map[tile.y]?.[tile.x] !== 0
+      )
+        return;
       p.bombs--;
       this.bombs.push({
         id: this.nextId++,
-        x: p.x,
-        y: p.y,
+        ...tile,
         owner: id,
         range: p.range,
         explodesAt: this.time + FUSE_SECONDS,
         pass: this.players
-          .filter((other) => same(other, p))
+          .filter(
+            (other) =>
+              overlapFraction({ x: other.visualX, y: other.visualY }, tile) > 0,
+          )
           .map((other) => other.id),
       });
       this.tell(id, "Bomb down. Find a corner!", "info");
     } else if (action.type === "answer" || action.type === "typed-answer") {
-      const b = this.activeBrain(id);
+      const b = this.brains.find(
+        (b) => b.id === action.brain && b.owner === id,
+      );
+      const inReach =
+        b && overlapFraction({ x: p.visualX, y: p.visualY }, b) > 0;
       if (
         !b ||
-        b.id !== action.brain ||
+        !inReach ||
+        b.id === c.dismissed ||
         b.retryAt > this.time ||
         (action.type === "answer"
           ? !Number.isInteger(action.choice) ||
@@ -239,59 +275,18 @@ export class Engine {
       this.tick++;
       return;
     }
-    this.time += dt;
-    this.tick++;
-    this.updateVisualPositions();
-    this.flames = this.flames.filter((f) => f.expiresAt > this.time);
-    this.checkWallDamage();
-    for (const p of this.players) {
-      const c = this.controls[p.id];
-      const direction = c.pending ?? c.direction;
-      if (
-        !p.alive ||
-        !direction ||
-        c.until < this.time ||
-        c.nextMove > this.time
-      )
-        continue;
-      c.pending = null;
-      p.facing = direction;
-      const d = DIRECTIONS[direction],
-        to = { x: p.x + d.x, y: p.y + d.y };
-      if (this.walkable(to, p.id)) {
-        const duration = 0.17 - p.speed * 0.018;
-        const position = this.playerPosition(p.id);
-        c.fromX = position.visualX;
-        c.fromY = position.visualY;
-        c.moveStarted = this.time;
-        c.moveDuration = duration;
-        p.x = to.x;
-        p.y = to.y;
-        c.dismissed = null;
-        c.nextMove = this.time + duration;
-        for (const b of this.bombs)
-          if (!same(b, p)) b.pass = b.pass.filter((id) => id !== p.id);
-        const pickup = this.pickups.find((item) => same(item, p));
-        if (pickup) {
-          if (pickup.kind === "fire")
-            p.range = Math.min(MAX_RANGE, p.range + 1);
-          else p.speed = Math.min(3, p.speed + 1);
-          this.pickups = this.pickups.filter((item) => item !== pickup);
-          this.tell(
-            p.id,
-            pickup.kind === "fire"
-              ? `Flame up! Your blast now reaches ${p.range} tiles.`
-              : "Speed up! Keep moving.",
-            "good",
-          );
-        }
-        // Stop on brains so a held arrow does not immediately skip the question.
-        if (this.activeBrain(p.id)) {
-          c.direction = null;
-          c.pending = null;
-          c.until = 0;
-        }
-      }
+    const target = this.time + dt;
+    // Resolve bombs at their actual fuse instant, even between frame updates.
+    while (this.time < target - 1e-9) {
+      const nextBomb = Math.min(...this.bombs.map((b) => b.explodesAt));
+      const end = Math.min(target, Math.max(this.time, nextBomb));
+      this.time = end;
+      this.tick++;
+      this.updateVisualPositions();
+      this.flames = this.flames.filter((f) => f.expiresAt > this.time);
+      this.checkWallDamage();
+      this.explodeDueBombs();
+      if (end === target) break;
     }
     this.explosions = this.explosions.filter((e) => this.time - e.at < 1.5);
     this.explodeDueBombs();
@@ -300,7 +295,7 @@ export class Engine {
     if (alive.length === 1) {
       this.phase = "ended";
       this.winner = alive[0].id;
-      this.controls.forEach((c) => (c.direction = null));
+      this.movement.forEach((m) => m.release(this.time * 1000));
     }
     if (this.time > this.brainCooldown && this.phase === "playing") {
       this.refillBrains();
@@ -363,25 +358,59 @@ export class Engine {
     } else for (const id of hit) this.damagePlayer(id);
   }
 
+  private collectPickup(id: PlayerId, point: Point): void {
+    const p = this.players[id],
+      pickup = this.pickups.find((item) => same(item, point));
+    if (!pickup) return;
+    if (pickup.kind === "fire") p.range = Math.min(MAX_RANGE, p.range + 1);
+    else p.speed = Math.min(3, p.speed + 1);
+    this.pickups = this.pickups.filter((item) => item !== pickup);
+    this.tell(
+      id,
+      pickup.kind === "fire"
+        ? `Flame up! Your blast now reaches ${p.range} tiles.`
+        : "Speed up! Keep moving.",
+      "good",
+    );
+  }
+
+  private syncMovement(id: PlayerId, checkReposition = true): void {
+    const p = this.players[id],
+      m = this.movement[id],
+      c = this.controls[id];
+    // Round setup and deterministic scenarios can reposition a player directly.
+    if (checkReposition && !same(p, m.snapshot().destination))
+      m.reset(p, this.time * 1000);
+    const at = this.time * 1000;
+    if (c.until > 0 && c.until < this.time) {
+      m.advance(Math.max(m.state().now, c.until * 1000));
+      m.release(Math.max(m.state().now, c.until * 1000));
+      c.until = 0;
+    }
+    m.advance(at);
+    const state = m.snapshot();
+    Object.assign(p, state.destination, {
+      visualX: state.visual.x,
+      visualY: state.visual.y,
+    });
+    if (state.direction) p.facing = state.direction;
+    if (c.dismissed !== null) {
+      const b = this.brains.find((b) => b.id === c.dismissed);
+      if (!b || overlapFraction(state.visual, b) === 0) c.dismissed = null;
+    }
+    for (const b of this.bombs)
+      if (overlapFraction(state.visual, b) === 0)
+        b.pass = b.pass.filter((pass) => pass !== id);
+  }
+
   private updateVisualPositions(): void {
-    for (const p of this.players) Object.assign(p, this.playerPosition(p.id));
+    for (const p of this.players) this.syncMovement(p.id);
   }
 
   private playerPosition(id: PlayerId): { visualX: number; visualY: number } {
-    const p = this.players[id],
-      c = this.controls[id];
-    // Tests and game setup sometimes reposition a player directly.
-    if (Math.abs(p.visualX - p.x) > 1.05 || Math.abs(p.visualY - p.y) > 1.05)
-      return { visualX: p.x, visualY: p.y };
-    if (!c.moveDuration) return { visualX: p.x, visualY: p.y };
-    const amount = Math.max(
-      0,
-      Math.min(1, (this.time - c.moveStarted) / c.moveDuration),
-    );
-    return {
-      visualX: c.fromX + (p.x - c.fromX) * amount,
-      visualY: c.fromY + (p.y - c.fromY) * amount,
-    };
+    this.syncMovement(id);
+    const p = this.players[id];
+    return { visualX: p.visualX, visualY: p.visualY };
   }
 
   private playerInBlast(id: PlayerId, bomb: Bomb, cells: Point[]): boolean {
@@ -453,18 +482,8 @@ export class Engine {
     p.alive = true;
     Object.assign(p, { ...safe, visualX: safe.x, visualY: safe.y });
     p.invulnerableUntil = this.time + RESPAWN_SHIELD_SECONDS;
-    const c = this.controls[id];
-    Object.assign(c, {
-      pending: null,
-      direction: null,
-      until: 0,
-      nextMove: this.time + 0.15,
-      dismissed: null,
-      fromX: safe.x,
-      fromY: safe.y,
-      moveStarted: this.time,
-      moveDuration: 0,
-    });
+    Object.assign(this.controls[id], { until: 0, dismissed: null });
+    this.movement[id].reset(safe, this.time * 1000);
   }
 
   private refillBrains(): void {
@@ -483,7 +502,10 @@ export class Engine {
           !this.bombs.some((b) => same(b, cell)) &&
           !this.flames.some((f) => same(f, cell)) &&
           !this.pickups.some((item) => same(item, cell)) &&
-          !this.players.some((other) => same(other, cell)),
+          !this.players.some(
+            (other) =>
+              overlapFraction({ x: other.visualX, y: other.visualY }, cell) > 0,
+          ),
       );
       while (
         this.brains.filter((b) => b.owner === p.id).length < 3 &&
@@ -509,6 +531,7 @@ export class Engine {
 
   /** Only this viewer's questions go onto the wire. Answers are never sent. */
   view(id: PlayerId): View {
+    this.updateVisualPositions();
     return {
       arena: this.arena,
       readyIn: this.readyIn,
@@ -518,6 +541,8 @@ export class Engine {
       winner: this.winner,
       map: this.map.map((row) => [...row]),
       players: this.players.map((p) => ({ ...p })),
+      movement: this.movement.map((m) => m.state()),
+      inputSequence: this.controls.map((c) => c.sequence),
       bombs: this.bombs.map(({ pass, ...b }) => ({ ...b, pass: [...pass] })),
       flames: this.flames.map((f) => ({ ...f })),
       explosions: this.explosions.map((e) => ({
