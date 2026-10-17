@@ -321,6 +321,54 @@ kbd {
   font-size: 11px;
   margin-bottom: 0;
 }
+.driveby-panel {
+  border-color: #6a4260;
+}
+.drill-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 10px;
+}
+.drill-question {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin: 6px 0 16px;
+}
+.drill-question > strong {
+  font-size: 32px;
+  letter-spacing: -0.03em;
+}
+#answer-buffer {
+  min-width: 95px;
+  max-width: 60%;
+  overflow-wrap: anywhere;
+  padding: 12px;
+  border: 1px solid #7d4e70;
+  border-radius: 8px;
+  text-align: center;
+  color: #f4a0d2;
+  font:
+    25px ui-monospace,
+    monospace;
+}
+.driveby-panel .telemetry {
+  margin-top: 18px;
+}
+.drill-feedback {
+  color: #d6b3d1;
+  font-size: 12px;
+  margin: 16px 0 0;
+}
+#brain-status[data-state="open"] {
+  border-color: #f4a0d2;
+  color: #f4a0d2;
+}
+.comparison .brain-result {
+  color: #e7b6d6;
+}
 #held-text {
   margin: 10px 0 15px;
 }

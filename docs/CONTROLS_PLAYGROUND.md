@@ -35,6 +35,20 @@ These are deliberate design choices for testing. Queue length, expiry and immedi
 
 ## Instrumentation
 
+### Drive-by answers
+
+The **Drive-by brain** checkbox enables a repeatable `7 + 5` question at (3, 2). The fixed question makes it easier to isolate timing. It applies the same question rules to both movement controllers; the current controller still uses its existing movement and smoothing, but neither controller stops on this lab brain.
+
+The dashed pink square around the selected player is a 0.6×0.6 tile answer footprint. Any positive intersection with the full brain tile permits answering, including a tiny corner intersection. Edges that only touch do not count. Acceptance uses animated position rather than the controller's grid reference. On a straight horizontal pass, the window runs from a centre position just beyond x=2.2 to just before x=3.8. It therefore includes the approach and departure portions of a step, rather than requiring the centre of the player to occupy the brain's tile.
+
+Keep an arrow or WASD key held and type numbers, a minus sign, a decimal point or a slash. The board retains focus, movement continues, and a correct answer accepts immediately without Enter. Backspace edits; Escape or Delete clears. OS repeated keydowns do not append digits repeatedly. Each movement mode has its own answer buffer and exactly-once reward. A correct answer prepared outside the tile is retained and automatically accepted on a subsequent overlap; completing it after exit never awards a bomb retroactively. R restarts both the movement and brain drill.
+
+The live panel shows typed text, overlap percentage, how long the window has been open (or the last observed window duration), and solved problems / bombs earned. The comparison cards show acceptance time independently for each mode. The event log includes raw character keydown/keyup, `answer-edit`, `brain-enter`, `brain-exit`, `answer-outside`, and `answer-accepted`, including position and overlap at acceptance. The robot and question tile remain marked after solving so that the last window can be inspected; repeat R to rearm the drill.
+
+The timing-focused controller advances its continuous motion to a keyboard event's timestamp before judging an edit. The current controller uses the game's last smoothed visual position. Between inputs the window is sampled each animation frame; entry and exit telemetry is therefore sample-timed, not a claim about hardware pixel timing. Rendering a question never calls the movement controller or moves focus. Recorded character edits replay alongside arrow input, and JSON version 2 includes brain configuration, buffers, overlap, acceptance positions/times, and rewards for both modes.
+
+The **Drive-by answer** scenario holds Right from 10–350 ms and types `1` at 55 ms and `2` at 70 ms. The timing-focused player accepts at x≈2.353 at 70 ms, while still approaching the brain tile's centre, then continues to (4, 2). A fresh traversal and replay can be compared with **Current**, whose visual position reaches the overlap window later.
+
 The live panel shows physical held keys, drawn coordinates, grid reference, move progress and queued intentions with remaining lifetimes. Both result cards show movement starts, reversals, discarded intentions, and last / mean / p95 timing samples. Deliberately queued taps naturally have a longer start delay than an idle keydown; this is not scheduling latency alone.
 
 - **Browser delivery** is handler time minus `KeyboardEvent.timeStamp`. It measures a browser dispatch gap, not keyboard hardware latency.
@@ -49,3 +63,5 @@ JSON export includes layout, buffer duration, mode, timestamped inputs, chronolo
 ## Validation
 
 `tests/controls-playground.test.ts` covers lost double taps in the current engine, preserved corner taps, zero-delay starts, continuous mid-segment reversals, releases exactly at a centre, waiting for a blocked turn, bounded/expiring queues, OS-repeat suppression, physical-key aliases, blur clearing, wall collision and independence from render cadence. The existing gameplay suite remains applicable because the main game's movement is not changed.
+
+`tests/drive-by.test.ts` covers entry/exit boundaries, corner overlaps, approaches and departures before/after the tile centre, late completion, answer preparation before entry, corrections, exactly-once rewards, and movement continuing while answer edits share its timeline. The current controller's committed grid destination cannot prematurely trigger acceptance.

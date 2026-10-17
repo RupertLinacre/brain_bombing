@@ -12,6 +12,13 @@ import {
   type Snapshot,
 } from "./movement";
 import { scenarios, type RecordedInput } from "./scenarios";
+import {
+  DriveByBrain,
+  ANSWER_HALF_SIZE,
+  BRAIN_TILE,
+  DRILL_QUESTION,
+  type AnswerEdit,
+} from "./drive-by";
 
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) =>
   document.querySelector<T>(selector)!;
@@ -21,7 +28,8 @@ const symbols: Record<string, string> = {
   ArrowLeft: "←",
   ArrowRight: "→",
 };
-const label = (code: string) => symbols[code] ?? code.replace("Key", "");
+const label = (code: string) =>
+  symbols[code] ?? code.replace(/^(Key|Digit|Numpad)/, "");
 const names: Record<Mode, string> = {
   current: "Current",
   precision: "Timing-focused",
@@ -37,13 +45,14 @@ $("#app").innerHTML = `
     <label class="setting">Board<select id="layout"><option value="open">Open 5 × 5</option><option value="pillars">5 × 5 with pillars</option></select></label>
     <label class="setting">Tap buffer <span><output id="buffer-label">220</output> ms</span><input id="buffer" type="range" min="80" max="400" step="10" value="220"></label>
     <label class="ghost-toggle"><input type="checkbox" id="ghost" checked> Show other mode as a ghost</label>
+    <label class="ghost-toggle"><input type="checkbox" id="driveby-enabled" checked> Drive-by brain</label>
     <button id="reset">Reset <kbd>R</kbd></button>
   </section>
   <div class="workspace">
     <section class="play-card">
       <div class="board-heading"><strong id="mode-title">Current</strong><span id="input-status">Click the board, then use arrows or WASD</span><span id="recording" class="badge">LIVE INPUT</span></div>
       <canvas id="board" width="650" height="650" tabindex="0" aria-label="5 by 5 movement playground. Arrow keys or WASD to move. R resets."></canvas>
-      <div class="board-footer"><span><i class="dot solid"></i> Selected mode</span><span><i class="dot ghost"></i> Other mode</span><span>Coordinates 0–4 · 170 ms / tile</span></div>
+      <div class="board-footer"><span><i class="dot solid"></i> Selected mode</span><span><i class="dot ghost"></i> Other mode</span><span>Coordinates 0–4 · 170 ms / tile</span><span>Pink outline = answer overlap</span></div>
       <div class="trials"><div class="trials-heading"><h2>Repeatable inputs</h2><button id="replay" disabled>Replay my inputs</button></div><div class="demo-buttons">${Object.entries(
         scenarios,
       )
@@ -54,6 +63,7 @@ $("#app").innerHTML = `
       <details class="explanation" open><summary>What changes between modes?</summary><dl><dt>Current</dt><dd>The actual game engine: 50 ms simulation steps, one pending direction, 170 ms tile animation, then the game’s extra render smoothing. Held keys are refreshed every 150 ms.</dd><dt>Timing-focused</dt><dd>Movement starts on keydown and animates directly from timestamps. Two pending taps, each expiring after the buffer time. Opposite input reverses immediately along the same lane; perpendicular input turns at a tile centre. The newest held key wins; a blocked turn can wait while an older held direction continues.</dd></dl><p>Released taps remain intentional steps. Holding a key repeats movement without relying on operating-system key repeat. Reversing replaces older buffered turns. Blur and hidden tabs clear keys and queues; switching the watched mode preserves the same input history.</p><p>This page isolates local movement. It does not apply the prototype to the game or measure network delay. “First drawn” is a JavaScript canvas submission measurement, not hardware display latency.</p></details>
     </section>
     <aside class="instrumentation">
+      <section class="panel driveby-panel" id="driveby-panel"><div class="drill-heading"><h2>Drive-by answer</h2><span id="brain-status" class="badge">OUTSIDE</span></div><div class="drill-question"><strong>${DRILL_QUESTION.expression}</strong><output id="answer-buffer" aria-label="Typed answer">—</output></div><p class="subtle">Type while moving. Any overlap with the pink tile counts. Backspace edits; Esc clears. R restarts.</p><dl class="telemetry"><dt>Player overlap</dt><dd id="brain-overlap">0%</dd><dt>Window open for</dt><dd id="brain-window">—</dd><dt>Problems solved / bombs</dt><dd id="brain-reward">0 / 0</dd></dl><p id="brain-feedback" class="drill-feedback" role="status">Keep an arrow held while typing. No Enter or focus change.</p></section>
       <section class="panel"><h2>Keys down</h2><div class="keys" id="keys">${["KeyW", "ArrowUp", "KeyA", "ArrowLeft", "KeyS", "ArrowDown", "KeyD", "ArrowRight"].map((code) => `<kbd data-key="${code}">${label(code)}</kbd>`).join("")}</div><p class="subtle" id="held-text">None</p><div class="clock-row"><span id="clock">0 ms</span><span id="fps">— fps</span><span id="delivery">Browser delivery: —</span></div><h3>Recent events</h3><div id="recent-events" class="recent-events"></div></section>
       <section class="panel"><h2>Live movement <span id="state-mode">Current</span></h2><dl class="telemetry"><dt>Grid reference</dt><dd id="cell">2, 2</dd><dt>Drawn position</dt><dd id="visual">2, 2</dd><dt>Direction / phase</dt><dd id="phase">Idle</dd><dt>Tile progress</dt><dd><progress id="progress" max="1" value="1"></progress> <span id="progress-text">100%</span></dd></dl><h3>Pending inputs</h3><div id="queue" class="queue">Empty</div><p class="subtle" id="grid-note">Current reports its grid destination immediately. Timing-focused reports its segment origin until arrival.</p></section>
       <section class="panel"><h2>Same input, two results</h2><div class="comparison" id="comparison"></div><p class="subtle">Start delay includes intentional buffering. First drawn includes scheduling and rendering. Samples are reset with the board.</p></section>
@@ -90,6 +100,8 @@ let mode: Mode = "current",
   bufferMs = 220;
 let map = makeMap(layout),
   controllers: Record<Mode, Controller>;
+let brainEnabled = true;
+let brains: Record<Mode, DriveByBrain>;
 let stats: Record<Mode, Stats> = {
   current: freshStats(),
   precision: freshStats(),
@@ -112,6 +124,8 @@ const canvas = $<HTMLCanvasElement>("#board"),
   ctx = canvas.getContext("2d")!;
 const sprite = new Image();
 sprite.src = `${import.meta.env.BASE_URL}sprites/player-teal.webp`;
+const brainSprite = new Image();
+brainSprite.src = `${import.meta.env.BASE_URL}sprites/brain.webp`;
 const time = () => (suspended ? clock : clock + performance.now() - anchor);
 
 function log(entry: LogEntry): void {
@@ -156,6 +170,10 @@ function reset(reason = "Board reset", keepTrace = false): void {
   replay = null;
   if (!keepTrace) trace = [];
   map = makeMap(layout);
+  brains = {
+    current: new DriveByBrain((e) => log({ ...e, source: "current" })),
+    precision: new DriveByBrain((e) => log({ ...e, source: "precision" })),
+  };
   controllers = {
     current: new CurrentControls(map, (e) => emit("current", e)),
     precision: new PrecisionControls(
@@ -183,9 +201,19 @@ function dispatch(input: RecordedInput, synthetic = false): void {
     note: `${synthetic ? "Replay" : "Live"}${repeat ? " · ignored by both controllers" : ""}`,
   });
   for (const c of Object.values(controllers)) {
-    if (down) c.down(code, at, repeat);
-    else c.up(code, at);
+    if (keyDirections[code]) {
+      if (down) c.down(code, at, repeat);
+      else c.up(code, at);
+    } else c.advance(at);
   }
+  if (brainEnabled)
+    for (const source of ["current", "precision"] as Mode[]) {
+      const position = controllers[source].snapshot().visual;
+      if (input.answer && down && !repeat)
+        brains[source].edit(input.answer, at, position);
+      else brains[source].sample(at, position);
+    }
+  updateBrainHud(at);
   if (!synthetic) {
     trace = history.map((i) => ({ ...i }));
     $("#replay").removeAttribute("disabled");
@@ -235,6 +263,11 @@ $("#buffer").oninput = () => {
   $("#buffer-label").textContent = String(bufferMs);
   reset("Tap buffer changed; both modes reset");
 };
+$("#driveby-enabled").onchange = () => {
+  brainEnabled = $<HTMLInputElement>("#driveby-enabled").checked;
+  reset("Drive-by drill changed; board and answer buffers reset");
+  canvas.focus();
+};
 $("#reset").onclick = () => {
   reset();
   canvas.focus();
@@ -243,6 +276,10 @@ document.querySelectorAll<HTMLButtonElement>("[data-demo]").forEach(
   (button) =>
     (button.onclick = () => {
       const s = scenarios[button.dataset.demo!];
+      if (button.dataset.demo === "driveby") {
+        brainEnabled = true;
+        $<HTMLInputElement>("#driveby-enabled").checked = true;
+      }
       run(s.inputs, s.duration, s.description);
     }),
 );
@@ -273,11 +310,19 @@ $("#export").onclick = () => {
     [
       JSON.stringify(
         {
-          version: 1,
+          version: 2,
           layout,
           bufferMs,
           tileMs: 170,
           watchedMode: mode,
+          driveBy: {
+            enabled: brainEnabled,
+            tile: BRAIN_TILE,
+            question: DRILL_QUESTION,
+            playerHalfSize: ANSWER_HALF_SIZE,
+            current: brains.current.snapshot(),
+            precision: brains.precision.snapshot(),
+          },
           inputs: history,
           events: [...logs].sort((a, b) => a.at - b.at),
           snapshots: {
@@ -308,6 +353,27 @@ window.addEventListener("keydown", (event) => {
     canvas.focus();
     return;
   }
+  let answer: AnswerEdit | undefined;
+  if (brainEnabled && !event.isComposing) {
+    if (/^[0-9.+/\-]$/.test(event.key))
+      answer = { kind: "append", text: event.key };
+    else if (event.key === "Backspace") answer = { kind: "backspace" };
+    else if (event.key === "Delete" || event.key === "Escape")
+      answer = { kind: "clear" };
+  }
+  if (answer) {
+    event.preventDefault();
+    if (replay) clearInput("Manual typing interrupted replay");
+    delivery = `${Math.max(0, performance.now() - event.timeStamp).toFixed(1)} ms`;
+    dispatch({
+      at: time(),
+      code: event.code,
+      down: true,
+      repeat: event.repeat || physical.has(event.code),
+      answer,
+    });
+    return;
+  }
   if (!keyDirections[event.code]) return;
   event.preventDefault();
   if (replay) clearInput("Manual input interrupted replay");
@@ -320,7 +386,7 @@ window.addEventListener("keydown", (event) => {
   });
 });
 window.addEventListener("keyup", (event) => {
-  if (!keyDirections[event.code] || !physical.has(event.code)) return;
+  if (!physical.has(event.code)) return;
   event.preventDefault();
   dispatch({ at: time(), code: event.code, down: false });
 });
@@ -377,6 +443,57 @@ function drawPlayer(s: Snapshot, ghost: boolean, colour: string): void {
   }
   ctx.restore();
 }
+function drawBrain(): void {
+  if (!brainEnabled) return;
+  const state = brains[mode].snapshot();
+  const left = 40 + BRAIN_TILE.x * 114,
+    top = 40 + BRAIN_TILE.y * 114;
+  ctx.save();
+  ctx.fillStyle = state.solved
+    ? "#69e2c319"
+    : state.inside
+      ? "#f4a0d238"
+      : "#f4a0d215";
+  ctx.fillRect(left, top, 114, 114);
+  ctx.strokeStyle = state.solved ? "#69e2c3" : "#f4a0d2";
+  ctx.lineWidth = state.inside ? 3 : 1.5;
+  ctx.strokeRect(left, top, 114, 114);
+  ctx.globalAlpha = state.solved ? 0.45 : 1;
+  if (brainSprite.complete && brainSprite.naturalWidth)
+    ctx.drawImage(brainSprite, left + 25, top + 32, 64, 64);
+  ctx.font = "bold 18px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#fff1fa";
+  ctx.fillText(
+    state.solved ? "✓ SOLVED" : DRILL_QUESTION.expression,
+    left + 57,
+    top + 24,
+  );
+  ctx.restore();
+}
+function drawAnswerFootprint(s: Snapshot): void {
+  if (!brainEnabled) return;
+  const x = 40 + (s.visual.x + 0.5) * 114,
+    y = 40 + (s.visual.y + 0.5) * 114;
+  const half = ANSWER_HALF_SIZE * 114;
+  ctx.save();
+  ctx.strokeStyle = "#f4a0d2";
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 3]);
+  ctx.strokeRect(x - half, y - half, half * 2, half * 2);
+  ctx.setLineDash([]);
+  const bx = 40 + BRAIN_TILE.x * 114,
+    by = 40 + BRAIN_TILE.y * 114;
+  const left = Math.max(x - half, bx),
+    top = Math.max(y - half, by);
+  const width = Math.min(x + half, bx + 114) - left,
+    height = Math.min(y + half, by + 114) - top;
+  if (width > 0 && height > 0) {
+    ctx.fillStyle = "#f4a0d242";
+    ctx.fillRect(left, top, width, height);
+  }
+  ctx.restore();
+}
 function draw(at: number): void {
   ctx.clearRect(0, 0, 650, 650);
   ctx.fillStyle = "#0b171d";
@@ -405,6 +522,7 @@ function draw(at: number): void {
       ctx.arc(97 + x * 114, 97 + y * 114, map[y][x] ? 6 : 2, 0, Math.PI * 2);
       ctx.fill();
     }
+  drawBrain();
   ctx.strokeStyle = "#69e2c3";
   ctx.lineWidth = 2;
   ctx.setLineDash([4, 4]);
@@ -418,6 +536,7 @@ function draw(at: number): void {
   if ($<HTMLInputElement>("#ghost").checked)
     drawPlayer(controllers[otherMode].snapshot(), true, "#edb278");
   drawPlayer(selected, false, "#69e2c3");
+  drawAnswerFootprint(selected);
   for (const source of ["current", "precision"] as Mode[]) {
     const pending = stats[source].pendingDraw,
       visual = controllers[source].snapshot().visual;
@@ -539,6 +658,49 @@ function updateKeys(): void {
     .forEach((k) => k.classList.toggle("down", physical.has(k.dataset.key!)));
   $("#held-text").textContent = [...physical].map(label).join(" + ") || "None";
 }
+function updateBrainHud(at: number): void {
+  const setText = (id: string, value: string) => {
+    const element = $(id);
+    if (element.textContent !== value) element.textContent = value;
+  };
+  $("#driveby-panel").hidden = !brainEnabled;
+  const brain = brains[mode].snapshot();
+  setText(
+    "#answer-buffer",
+    brain.solved ? `✓ ${DRILL_QUESTION.answer}` : brain.buffer || "—",
+  );
+  setText(
+    "#brain-status",
+    brain.solved ? "SOLVED" : brain.inside ? "WINDOW OPEN" : "OUTSIDE",
+  );
+  $("#brain-status").dataset.state = brain.solved
+    ? "solved"
+    : brain.inside
+      ? "open"
+      : "outside";
+  setText("#brain-overlap", `${(brain.overlap * 100).toFixed(1)}%`);
+  setText(
+    "#brain-window",
+    brain.enteredAt !== null
+      ? `${(at - brain.enteredAt).toFixed(0)} ms`
+      : brain.lastWindowMs !== null
+        ? `${brain.lastWindowMs.toFixed(0)} ms (last)`
+        : "—",
+  );
+  setText("#brain-reward", `${brain.solved ? 1 : 0} / ${brain.bombsEarned}`);
+  setText(
+    "#brain-feedback",
+    brain.solved
+      ? `Accepted at ${brain.acceptedAt!.toFixed(1)} ms, position (${point(brain.acceptedPosition!)}). Movement continues.`
+      : brain.inside
+        ? "Window open. Type the answer and keep moving."
+        : brain.buffer
+          ? "Input kept for this brain. A correct answer will accept on overlap."
+          : brain.missedWindows
+            ? "Window missed. Loop back, or press R to retry."
+            : "Keep an arrow held while typing. No Enter or focus change.",
+  );
+}
 function updateHud(at: number): void {
   const s = controllers[mode].snapshot();
   $("#mode-title").textContent = $("#state-mode").textContent = names[mode];
@@ -552,6 +714,7 @@ function updateHud(at: number): void {
       ? "Listening · arrows / WASD · R to reset"
       : "Click the board, then use arrows or WASD";
   updateKeys();
+  updateBrainHud(at);
   $("#cell").textContent = point(s.cell);
   $("#visual").textContent = point(s.visual);
   $("#phase").textContent =
@@ -570,7 +733,8 @@ function updateHud(at: number): void {
     .map((source) => {
       const st = stats[source],
         snap = controllers[source].snapshot();
-      return `<article class="${source === mode ? "selected" : ""}" data-comparison="${source}"><h3>${names[source]}</h3><strong>(${point(snap.visual)})</strong><p>${st.moves} starts · ${st.reversals} reversals · ${st.dropped} discarded</p><dl><dt>Start: last / avg / p95</dt><dd>${summary(st.latencies)}</dd><dt>First drawn: last / avg / p95</dt><dd>${summary(st.drawn)}</dd></dl></article>`;
+      const brain = brains[source].snapshot();
+      return `<article class="${source === mode ? "selected" : ""}" data-comparison="${source}"><h3>${names[source]}</h3><strong>(${point(snap.visual)})</strong><p>${st.moves} starts · ${st.reversals} reversals · ${st.dropped} discarded</p>${brainEnabled ? `<p class="brain-result">${brain.solved ? `Brain accepted @ ${brain.acceptedAt!.toFixed(1)} ms · +1 bomb` : `${brain.inside ? "Brain window open" : "Brain unsolved"} · ${brain.missedWindows} missed windows`}</p>` : ""}<dl><dt>Start: last / avg / p95</dt><dd>${summary(st.latencies)}</dd><dt>First drawn: last / avg / p95</dt><dd>${summary(st.drawn)}</dd></dl></article>`;
     })
     .join("");
   renderLog();
@@ -597,6 +761,10 @@ function frame(_rafTimestamp: number): void {
       }
     }
     Object.values(controllers).forEach((c) => c.frame(at));
+    if (brainEnabled)
+      for (const source of ["current", "precision"] as Mode[])
+        brains[source].sample(at, controllers[source].snapshot().visual);
+    updateBrainHud(at);
     frameAverage = frameAverage * 0.9 + (now - lastFrame) * 0.1;
     draw(at);
     if (at - lastHud > 65) {

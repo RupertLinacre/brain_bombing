@@ -1,8 +1,11 @@
+import type { AnswerEdit } from "./drive-by";
+
 export type RecordedInput = {
   at: number;
   code: string;
   down: boolean;
   repeat?: boolean;
+  answer?: AnswerEdit;
 };
 export const scenarios: Record<
   string,
@@ -13,6 +16,30 @@ export const scenarios: Record<
     duration: number;
   }
 > = {
+  driveby: {
+    label: "Drive-by answer",
+    description:
+      "Hold → and type 12 while only partly over the 7 + 5 tile. No Enter, no stopping. The prototype accepts before reaching the tile centre.",
+    inputs: [
+      { at: 10, code: "ArrowRight", down: true },
+      {
+        at: 55,
+        code: "Digit1",
+        down: true,
+        answer: { kind: "append", text: "1" },
+      },
+      { at: 60, code: "Digit1", down: false },
+      {
+        at: 70,
+        code: "Digit2",
+        down: true,
+        answer: { kind: "append", text: "2" },
+      },
+      { at: 75, code: "Digit2", down: false },
+      { at: 350, code: "ArrowRight", down: false },
+    ],
+    duration: 800,
+  },
   double: {
     label: "Double tap →",
     description:
