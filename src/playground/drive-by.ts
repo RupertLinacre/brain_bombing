@@ -64,6 +64,14 @@ export class DriveByBrain {
           note: `Answer window closes after ${(at - (this.enteredAt ?? at)).toFixed(1)} ms${this.acceptedAt === null ? " · no answer accepted" : " · solved"}`,
         });
         if (this.acceptedAt === null) this.missedWindows++;
+        if (this.buffer) {
+          this.emit({
+            at,
+            kind: "answer-cleared",
+            note: `Left brain tile; cleared ${JSON.stringify(this.buffer)}`,
+          });
+          this.buffer = "";
+        }
         this.enteredAt = null;
       }
     }

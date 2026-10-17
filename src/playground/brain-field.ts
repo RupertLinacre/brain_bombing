@@ -175,6 +175,14 @@ export class BrainField {
           kind: "brain-exit",
           note: `Brain #${b.id}: window closes after ${this.lastWindowMs.toFixed(1)} ms · no answer accepted`,
         });
+        if (this.buffer) {
+          this.emit({
+            at,
+            kind: "answer-cleared",
+            note: `Left brain #${b.id}; cleared ${JSON.stringify(this.buffer)}`,
+          });
+          this.buffer = "";
+        }
         b.enteredAt = null;
       }
       b.overlap = overlap;

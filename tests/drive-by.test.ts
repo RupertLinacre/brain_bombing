@@ -41,11 +41,15 @@ describe("drive-by answer overlap", () => {
     brain.edit({ kind: "append", text: "2" }, 110, { x: 3.8, y: 2 });
     expect(brain.snapshot().solved).toBe(false);
     expect(brain.snapshot().missedWindows).toBe(1);
-    expect(events.some((e) => e.kind === "answer-outside")).toBe(true);
+    expect(brain.snapshot().buffer).toBe("2");
+    expect(events.some((e) => e.kind === "answer-cleared")).toBe(true);
     brain.sample(120, { x: 4, y: 2 });
     expect(brain.snapshot().solved).toBe(false);
     brain.sample(150, { x: 3.79, y: 2 });
-    expect(brain.snapshot().acceptedAt).toBe(150);
+    expect(brain.snapshot().solved).toBe(false);
+    brain.edit({ kind: "clear" }, 160, { x: 3.79, y: 2 });
+    brain.edit({ kind: "append", text: "12" }, 170, { x: 3.79, y: 2 });
+    expect(brain.snapshot().acceptedAt).toBe(170);
   });
   it("can prepare an answer before entry, accepting only once overlap actually begins", () => {
     const events: MovementEvent[] = [],
@@ -60,13 +64,14 @@ describe("drive-by answer overlap", () => {
     expect(brain.snapshot().bombsEarned).toBe(1);
     expect(events.filter((e) => e.kind === "answer-accepted")).toHaveLength(1);
   });
-  it("keeps unfinished input across a pass and supports corrections without locking movement", () => {
+  it("allows corrections during a pass and clears unfinished input on exit", () => {
     const brain = new DriveByBrain();
     brain.edit({ kind: "append", text: "19" }, 10, { x: 2.4, y: 2 });
     expect(brain.snapshot().solved).toBe(false);
     brain.edit({ kind: "backspace" }, 20, { x: 2.5, y: 2 });
-    brain.sample(100, { x: 4, y: 2 });
     expect(brain.snapshot().buffer).toBe("1");
+    brain.sample(100, { x: 4, y: 2 });
+    expect(brain.snapshot().buffer).toBe("");
     expect(brain.snapshot().lastWindowMs).toBe(90);
     brain.edit({ kind: "clear" }, 110, { x: 4, y: 2 });
     expect(brain.snapshot().buffer).toBe("");

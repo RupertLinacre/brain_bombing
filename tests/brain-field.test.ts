@@ -106,6 +106,58 @@ describe("continuous questions on the controls playground", () => {
     field.edit({ kind: "append", text: b.question.answer }, 2, b.tile);
     expect(field.snapshot().solved).toBe(1);
   });
+  it.each([
+    [
+      { x: 3.799999, y: 2 },
+      { x: 3.8, y: 2 },
+    ],
+    [
+      { x: 2.200001, y: 2 },
+      { x: 2.2, y: 2 },
+    ],
+    [
+      { x: 3, y: 2.799999 },
+      { x: 3, y: 2.8 },
+    ],
+    [
+      { x: 3, y: 1.200001 },
+      { x: 3, y: 1.2 },
+    ],
+  ])(
+    "keeps unfinished typing until the last overlap disappears: %j → %j",
+    (partial, outside) => {
+      const events: MovementEvent[] = [],
+        field = new BrainField(makeMap("crates"), setup(42, true), (e) =>
+          events.push(e),
+        );
+      field.edit({ kind: "append", text: "1" }, 10, { x: 3, y: 2 });
+      field.sample(20, partial);
+      expect(field.snapshot().buffer).toBe("1");
+      field.sample(30, outside);
+      expect(field.snapshot().buffer).toBe("");
+      expect(events.filter((e) => e.kind === "answer-cleared")).toHaveLength(1);
+      field.sample(40, { x: 3, y: 2 });
+      field.edit({ kind: "append", text: "2" }, 50, { x: 3, y: 2 });
+      expect(field.snapshot().solved).toBe(0);
+      expect(field.snapshot().buffer).toBe("2");
+      field.edit({ kind: "clear" }, 60, { x: 3, y: 2 });
+      field.edit({ kind: "append", text: "12" }, 70, { x: 3, y: 2 });
+      expect(field.snapshot().solved).toBe(1);
+    },
+  );
+  it("does not carry an answer from a departed brain into a different question", () => {
+    const field = new BrainField(makeMap("crates"), setup(42, true)),
+      [first, second] = field.snapshot().questions;
+    field.edit(
+      { kind: "append", text: second.question.answer },
+      10,
+      first.tile,
+    );
+    expect(field.snapshot().buffer).toBe(second.question.answer);
+    field.sample(20, second.tile);
+    expect(field.snapshot().buffer).toBe("");
+    expect(field.snapshot().solved).toBe(0);
+  });
   it("keeps the drive-by replay reproducible with three questions and crates", () => {
     const events: MovementEvent[] = [],
       map = makeMap("crates"),
