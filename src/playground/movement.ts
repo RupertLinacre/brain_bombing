@@ -49,11 +49,15 @@ export type Snapshot = {
   tick: number;
   moving: boolean;
 };
-export type Layout = "open" | "pillars";
+export type Layout = "open" | "pillars" | "crates";
 export function makeMap(layout: Layout): number[][] {
   return Array.from({ length: 5 }, (_, y) =>
     Array.from({ length: 5 }, (_, x) =>
-      layout === "pillars" && x % 2 === 1 && y % 2 === 1 ? 1 : 0,
+      layout !== "open" && x % 2 === 1 && y % 2 === 1
+        ? layout === "crates"
+          ? 2
+          : 1
+        : 0,
     ),
   );
 }

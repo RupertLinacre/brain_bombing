@@ -27,7 +27,7 @@ The production `dist/` folder can be served by any static web host. Relative ass
 
 Open `/controls.html` on the development server to compare the current controls with a timing-focused prototype on a 5×5 board. Both receive identical keyboard input; switch the watched mode or show the other as a ghost. The page includes live held keys, recent events, pending taps, timing measurements, reproducible scenarios, replay of your own input, and JSON export. The prototype is isolated from the main game. See [the controls notes](docs/CONTROLS_PLAYGROUND.md) for the input rules and measurement limits.
 
-The optional **Drive-by brain** drill lets you hold a movement key and type the answer while any part of your outlined footprint overlaps a brain tile. Try the **Drive-by answer** replay, or type while moving manually. Correct answers accept automatically without stopping, and the logs show exactly where and when acceptance happened.
+The **Drive-by questions** drill starts with crates to steer around and three randomly placed maths questions from the game's question generator. Each solve instantly spawns a replacement on another empty, reachable tile. Hold a movement key and type while any part of your outlined footprint overlaps the question's tile. Correct answers accept automatically without stopping, and the solved counter keeps climbing. Try the **Drive-by answer** replay, or practise manually. **R** starts a fresh random set; recordings retain their question bank and placement seed.
 
 ## Deploy to GitHub Pages
 

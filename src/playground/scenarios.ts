@@ -67,14 +67,14 @@ export const scenarios: Record<
   corner: {
     label: "Buffered corner",
     description:
-      "Press ↑ during a rightward step, release before reaching the junction. The turn should still happen.",
+      "Press ↑ during the second rightward step, then release before the open junction. The turn should still happen, including on the crate board.",
     inputs: [
       { at: 10, code: "ArrowRight", down: true },
-      { at: 55, code: "ArrowUp", down: true },
-      { at: 75, code: "ArrowUp", down: false },
-      { at: 90, code: "ArrowRight", down: false },
+      { at: 255, code: "ArrowUp", down: true },
+      { at: 275, code: "ArrowUp", down: false },
+      { at: 300, code: "ArrowRight", down: false },
     ],
-    duration: 650,
+    duration: 800,
   },
   burst: {
     label: "Too many taps",

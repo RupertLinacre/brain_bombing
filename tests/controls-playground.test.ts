@@ -37,7 +37,7 @@ describe("controls playground comparisons", () => {
     run(current, "corner");
     run(precision, "corner");
     expect(current.snapshot().cell).toEqual({ x: 4, y: 2 });
-    expect(precision.snapshot().cell).toEqual({ x: 3, y: 1 });
+    expect(precision.snapshot().cell).toEqual({ x: 4, y: 1 });
   });
 });
 
