@@ -23,6 +23,10 @@ npm run preview  # Serve the production build
 
 The production `dist/` folder can be served by any static web host. Relative asset paths support deployment in a subdirectory. No application server is required.
 
+## Controls playground
+
+Open `/controls.html` on the development server to compare the current controls with a timing-focused prototype on a 5×5 board. Both receive identical keyboard input; switch the watched mode or show the other as a ghost. The page includes live held keys, recent events, pending taps, timing measurements, reproducible scenarios, replay of your own input, and JSON export. The prototype is isolated from the main game. See [the controls notes](docs/CONTROLS_PLAYGROUND.md) for the input rules and measurement limits.
+
 ## Deploy to GitHub Pages
 
 The `origin` remote points to `RupertLinacre/brain_bombing`. To test the game, build it with the `/brain_bombing/` base path, and publish `dist/` to the repository's `gh-pages` branch, run:
