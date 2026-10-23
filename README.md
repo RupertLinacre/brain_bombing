@@ -13,7 +13,7 @@ npm install
 npm run dev
 ```
 
-Open the URL printed by Vite. To use a different port, run `npm run dev -- --port 5182`.
+Open `http://localhost:5198/` (or the URL printed by Vite). Port 5198 is already allowed by the shared TURN credential service. Other origins and ports can still try direct play; see [relay setup and verification](docs/RELAY.md).
 
 ```sh
 npm test          # Simulation, maths library, privacy, and input validation
@@ -72,7 +72,7 @@ Like Arithmetic Annihilation, transport uses **PeerJS** signalling and a **WebRT
 
 Rematches stay in the same room. The guest can signal readiness; the host starts the next round. Disconnects stop the local match and show a return-to-menu message instead of leaving a frozen game without explanation. Online matches continue while menus are open. Computer matches can be paused.
 
-PeerJS's public signalling service needs internet access. Some school, corporate, or restrictive NAT networks require a TURN relay. Optional `VITE_TURN_URL`, `VITE_TURN_USERNAME`, and `VITE_TURN_CREDENTIAL` settings can be added in `.env.local` before building. These are **browser-visible** settings; use credentials intended for browser clients. Computer play needs no connection after the app and assets have loaded.
+Both players automatically fetch temporary TURN credentials from the existing Cloudflare relay before joining multiplayer. Direct connections remain preferred where possible; TURN includes TLS on port 443 for restrictive networks. Credentials renew during long rooms and matches. If the relay service is unavailable, the lobby explains that it is trying a direct connection. The long-lived Cloudflare key stays in the Worker. See [relay setup, limitations and tests](docs/RELAY.md). PeerJS signalling still requires internet access. Computer play needs no connection after the app and assets have loaded.
 
 ## Computer opponent
 
@@ -89,7 +89,7 @@ Professor Byte walks to its own brains, spends time answering, and earns the sam
 - `src/game/renderer.ts` / `src/game/effects.ts` — canvas drawing, sprite animation, and cosmetic explosion effects.
 - `src/game/feedback.ts` — one-time presentation cues from authoritative snapshots.
 - `src/ui/audio.ts` — original synthesized effects and bundled soundtrack playback.
-- `src/network/session.ts` — room creation/joining, PeerJS transport, validation, and disconnect handling.
+- `src/network/session.ts` / `src/network/relay.ts` — room lifecycle, temporary TURN credentials, PeerJS transport, validation, and disconnect handling.
 - `src/main.ts` / `src/style.css` — menus, keyboard/touch input, HUD, questions, and viewport fitting.
 - `public/sprites/` — optimized original generated artwork.
 - `assets/source/` / `docs/ARTWORK.md` — source atlas and exact generation prompt.

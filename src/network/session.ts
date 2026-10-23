@@ -1,6 +1,26 @@
 import Peer, { type DataConnection } from "peerjs";
 import { YEARS, type Action, type Profile, type View } from "../game/types";
 import { keyDirections } from "../game/movement";
+import {
+  DIRECT_CONFIG,
+  loadRelay,
+  relayConfiguration,
+  RelayError,
+  RELAY_REFRESH_MS,
+  RELAY_MARGIN_MS,
+  type RelayLease,
+  type RelayStatus,
+} from "./relay";
+
+type SessionServices = {
+  credentials(signal: AbortSignal): Promise<RelayLease>;
+  peer(id: string | undefined, config: RTCConfiguration): Peer;
+};
+const defaultServices: SessionServices = {
+  credentials: (signal) => loadRelay(signal),
+  peer: (id, config) =>
+    id ? new Peer(id, { debug: 0, config }) : new Peer({ debug: 0, config }),
+};
 
 export type NetworkEvent =
   | { kind: "status"; text: string }
@@ -72,7 +92,33 @@ export class Session {
   private actionWindow = 0;
   private actionCount = 0;
   private generation = 0;
-  constructor(private emit: (event: NetworkEvent) => void) {}
+  private attempt = 0;
+  private lifetime?: AbortController;
+  private refreshTimer?: ReturnType<typeof setTimeout>;
+  private expiryTimer?: ReturnType<typeof setTimeout>;
+  private refreshPending?: Promise<void>;
+  private lease?: RelayLease;
+  private retryAfterMs = 30000;
+  private nextRefreshAt = 0;
+  private relayNotice = "";
+  private reconnectUsed = false;
+  relayStatus: RelayStatus = "loading";
+  private services: SessionServices;
+  constructor(
+    private emit: (event: NetworkEvent) => void,
+    services: Partial<SessionServices> = {},
+  ) {
+    this.services = { ...defaultServices, ...services };
+  }
+  private current(attempt: number): boolean {
+    return !this.disposed && this.attempt === attempt;
+  }
+  private status(text: string): void {
+    this.emit({
+      kind: "status",
+      text: this.relayNotice ? `${text} ${this.relayNotice}` : text,
+    });
+  }
 
   open(role: "host" | "guest", profile: Profile, code?: string): void {
     this.close();
@@ -85,39 +131,62 @@ export class Session {
             () => ALPHABET[Math.floor(Math.random() * ALPHABET.length)],
           ).join("")
         : code!.trim().toUpperCase();
-    this.emit({
-      kind: "status",
-      text: role === "host" ? "Opening your room…" : "Finding your friend…",
-    });
-    const turnUrl = import.meta.env.VITE_TURN_URL;
-    const config = turnUrl
-      ? {
-          iceServers: [
-            { urls: "stun:stun.l.google.com:19302" },
-            {
-              urls: turnUrl,
-              username: import.meta.env.VITE_TURN_USERNAME,
-              credential: import.meta.env.VITE_TURN_CREDENTIAL,
-            },
-          ],
-        }
-      : undefined;
-    const peer =
-      role === "host"
-        ? new Peer(PREFIX + this.code.toLowerCase(), {
-            debug: 0,
-            ...(config ? { config } : {}),
-          })
-        : new Peer({ debug: 0, ...(config ? { config } : {}) });
+    this.lifetime = new AbortController();
+    this.relayStatus = "loading";
+    this.relayNotice = "";
+    this.reconnectUsed = false;
+    this.retryAfterMs = 30000;
+    const attempt = this.attempt;
+    this.status("Preparing the connection…");
+    if (this.current(attempt)) void this.prepare(attempt, role, profile);
+  }
+
+  private async prepare(
+    attempt: number,
+    role: "host" | "guest",
+    profile: Profile,
+  ): Promise<void> {
+    let config = DIRECT_CONFIG;
+    try {
+      const lease = await this.services.credentials(this.lifetime!.signal);
+      if (!this.current(attempt)) return;
+      this.lease = lease;
+      config = relayConfiguration(lease);
+      this.relayStatus = "available";
+    } catch (error) {
+      if (!this.current(attempt)) return;
+      this.relayUnavailable(error);
+    }
+    if (!this.current(attempt)) return;
+    let peer: Peer;
+    try {
+      peer = this.services.peer(
+        role === "host" ? PREFIX + this.code.toLowerCase() : undefined,
+        config,
+      );
+    } catch {
+      this.fail("Could not start multiplayer. Refresh and try again.");
+      return;
+    }
     this.peer = peer;
+    this.scheduleRefresh(attempt);
+    if (!this.current(attempt)) return;
+    this.status(
+      role === "host" ? "Opening your room…" : "Finding your friend…",
+    );
+    if (!this.current(attempt)) return;
+    this.deadline(
+      peer,
+      18000,
+      "Could not reach the room service. Check your internet connection and try again.",
+    );
     peer.on("open", () => {
       if (this.disposed || this.peer !== peer) return;
+      clearTimeout(this.timeout);
       if (role === "host") {
         this.emit({ kind: "ready", code: this.code });
-        this.emit({
-          kind: "status",
-          text: "Room ready. Waiting for your friend…",
-        });
+        if (this.current(attempt))
+          this.status("Room ready. Waiting for your friend…");
       } else
         this.attach(
           peer.connect(PREFIX + this.code.toLowerCase(), { reliable: true }),
@@ -139,6 +208,11 @@ export class Session {
         });
         return;
       }
+      if (this.lease && this.lease.expiresAt <= Date.now()) {
+        conn.close();
+        this.fail("The room's relay credentials expired. Create a new room.");
+        return;
+      }
       this.attach(conn, profile);
     });
     peer.on("error", (error) => {
@@ -152,23 +226,157 @@ export class Session {
       if (!this.connected) this.fail(text);
     });
     peer.on("disconnected", () => {
-      if (this.peer === peer && !this.disposed && !this.connected)
+      if (!this.current(attempt) || this.peer !== peer || this.connected)
+        return;
+      if (this.reconnectUsed || peer.destroyed) {
         this.fail("The room service disconnected. Please try again.");
+        return;
+      }
+      this.reconnectUsed = true;
+      void this.reconnect(peer, attempt);
     });
+    if (typeof document !== "undefined")
+      document.addEventListener(
+        "visibilitychange",
+        () => {
+          if (
+            !document.hidden &&
+            this.current(attempt) &&
+            Date.now() >= this.nextRefreshAt
+          )
+            void this.refreshRelay(attempt);
+        },
+        { signal: this.lifetime!.signal },
+      );
+  }
+
+  private deadline(peer: Peer, ms: number, text: string): void {
+    clearTimeout(this.timeout);
     this.timeout = setTimeout(() => {
-      if (
-        this.peer === peer &&
-        !this.connected &&
-        (role === "guest" || !peer.id)
-      )
-        this.fail(
-          "Connection timed out. Check the code and network, then try again.",
-        );
-    }, 18000);
+      if (this.peer === peer && !this.disposed) this.fail(text);
+    }, ms);
+  }
+
+  private relayUnavailable(error: unknown): void {
+    this.relayStatus = "unavailable";
+    const failure =
+      error instanceof RelayError ? error : new RelayError("unavailable");
+    this.retryAfterMs = failure.retryAfterMs;
+    this.relayNotice = `${failure.message} Trying a direct connection; some networks may not connect.`;
+  }
+
+  private scheduleRefresh(attempt: number, delay?: number): void {
+    clearTimeout(this.refreshTimer);
+    if (!this.current(attempt)) return;
+    const remaining = this.lease ? this.lease.expiresAt - Date.now() : Infinity;
+    if (remaining <= 0) {
+      this.fail(
+        "The relay could not renew this room's connection. Create a new room and try again.",
+      );
+      return;
+    }
+    const wait =
+      delay ??
+      (this.lease
+        ? Math.max(
+            1000,
+            Math.min(RELAY_REFRESH_MS, remaining - RELAY_MARGIN_MS),
+          )
+        : this.retryAfterMs);
+    this.nextRefreshAt = Date.now() + wait;
+    this.refreshTimer = setTimeout(() => {
+      void this.refreshRelay(attempt);
+    }, wait);
+    clearTimeout(this.expiryTimer);
+    const lease = this.lease;
+    if (lease)
+      this.expiryTimer = setTimeout(
+        () => {
+          if (!this.current(attempt) || this.lease !== lease) return;
+          if (lease.expiresAt > Date.now()) {
+            this.scheduleRefresh(attempt);
+            return;
+          }
+          this.fail(
+            "The relay could not renew this room's connection. Create a new room and try again.",
+          );
+        },
+        Math.max(0, remaining),
+      );
+  }
+
+  private refreshRelay(attempt: number): Promise<void> {
+    if (!this.current(attempt)) return Promise.resolve();
+    if (this.lease && this.lease.expiresAt <= Date.now()) {
+      this.fail(
+        "The relay could not renew this room's connection. Create a new room and try again.",
+      );
+      return Promise.resolve();
+    }
+    if (this.refreshPending) return this.refreshPending;
+    this.refreshPending = (async () => {
+      try {
+        const lease = await this.services.credentials(this.lifetime!.signal);
+        if (!this.current(attempt) || !this.peer) return;
+        const config = relayConfiguration(lease),
+          pc = this.connection?.peerConnection;
+        if (pc && pc.signalingState !== "closed")
+          pc.setConfiguration({ ...pc.getConfiguration(), ...config });
+        this.peer.options.config = { ...this.peer.options.config, ...config };
+        this.lease = lease;
+        this.relayStatus = "available";
+        this.relayNotice = "";
+        this.scheduleRefresh(attempt);
+        if (!this.connected)
+          this.status("Room ready. Waiting for your friend…");
+      } catch (error) {
+        if (!this.current(attempt)) return;
+        const failure =
+          error instanceof RelayError ? error : new RelayError("unavailable");
+        this.retryAfterMs = failure.retryAfterMs;
+        if (!this.lease) this.relayUnavailable(failure);
+        else
+          this.relayNotice =
+            "Relay renewal is delayed; retrying before this room's credentials expire.";
+        if (!this.connected) this.status("Waiting for your friend…");
+        this.scheduleRefresh(attempt, this.retryAfterMs);
+      } finally {
+        if (this.current(attempt)) this.refreshPending = undefined;
+      }
+    })();
+    return this.refreshPending;
+  }
+
+  private async reconnect(peer: Peer, attempt: number): Promise<void> {
+    if (this.lease && this.lease.expiresAt - Date.now() < RELAY_MARGIN_MS)
+      await this.refreshRelay(attempt);
+    if (!this.current(attempt) || this.peer !== peer || this.connected) return;
+    if (this.lease && this.lease.expiresAt <= Date.now()) {
+      this.fail("This room's relay credentials expired. Create a new room.");
+      return;
+    }
+    this.status("Reconnecting to the room service…");
+    if (!this.current(attempt)) return;
+    try {
+      peer.reconnect();
+      this.deadline(
+        peer,
+        18000,
+        "The room service could not reconnect. Create a new room.",
+      );
+    } catch {
+      this.fail("The room service could not reconnect. Create a new room.");
+    }
   }
 
   private attach(conn: DataConnection, profile: Profile): void {
     this.connection = conn;
+    if (this.peer)
+      this.deadline(
+        this.peer,
+        30000,
+        "Your friend could not finish connecting. Try a new room or another network.",
+      );
     conn.on("open", () => {
       if (this.disposed || this.connection !== conn) return;
       this.connected = true;
@@ -291,6 +499,13 @@ export class Session {
   }
   close(): void {
     this.disposed = true;
+    this.attempt++;
+    this.lifetime?.abort();
+    this.lifetime = undefined;
+    clearTimeout(this.refreshTimer);
+    clearTimeout(this.expiryTimer);
+    this.refreshPending = undefined;
+    this.lease = undefined;
     this.connected = false;
     this.started = false;
     clearInterval(this.heartbeat);
